@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from '@clerk/nextjs';
 import { Toaster } from "@/components/ui/sonner";
@@ -18,7 +18,10 @@ export const metadata: Metadata = {
   title: "Tourny - Tournament Management",
   description: "Create, manage, and run tournaments with automated matchmaking",
   manifest: "/manifest.json",
-  themeColor: "#da6c6c",
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -27,11 +30,13 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: "#da6c6c",
 };
 
 export default function RootLayout({
@@ -44,8 +49,7 @@ export default function RootLayout({
       <html lang="en">
         <head>
           <link rel="manifest" href="/manifest.json" />
-          <meta name="theme-color" content="#da6c6c" />
-          <link rel="apple-touch-icon" href="/icon-192x192.png" />
+          <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         </head>
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}

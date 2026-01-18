@@ -4,8 +4,8 @@
   "description": "Manage your tournaments and track ongoing matches",
   "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#da6c6c",
+  "background_color": "#ffb689",
+  "theme_color": "#ffb689",
   "orientation": "portrait-primary",
   "icons": [
     {
@@ -19,20 +19,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/screenshot-mobile.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "form_factor": "narrow"
-    },
-    {
-      "src": "/screenshot-desktop.png",
-      "sizes": "1920x1080",
-      "type": "image/png",
-      "form_factor": "wide"
     }
   ],
   "categories": ["sports", "productivity", "utilities"],
