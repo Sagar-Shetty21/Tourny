@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 // GET /api/tournaments/[id]/matches - Get all matches for a tournament
 export async function GET(
@@ -17,33 +18,50 @@ export async function GET(
     }
 
     const { id: tournamentId } = await params;
+    const { searchParams } = new URL(req.url);
+    const status = searchParams.get("status");
 
-    // TODO: Fetch all matches for this tournament from database
-    // TODO: Include participant details
-    // TODO: Include match results and scores
-    // TODO: Order by round and match number
-    // TODO: Filter by status (optional query param: ?status=pending|completed)
+    // Verify user has access to tournament
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      include: {
+        owners: true,
+        participants: true,
+      },
+    });
+
+    if (!tournament) {
+      return NextResponse.json(
+        { error: "Tournament not found" },
+        { status: 404 }
+      );
+    }
+
+    const isOwner = tournament.owners.some((o) => o.userId === userId);
+    const isParticipant = tournament.participants.some((p) => p.userId === userId);
+
+    if (!isOwner && !isParticipant) {
+      return NextResponse.json(
+        { error: "Access denied" },
+        { status: 403 }
+      );
+    }
+
+    // Fetch matches with optional status filter
+    const matches = await prisma.match.findMany({
+      where: {
+        tournamentId,
+        ...(status && { status: status.toUpperCase() as any }),
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
 
     return NextResponse.json({
       success: true,
-      matches: [
-        // Placeholder empty array
-        // Example structure:
-        // {
-        //   id: "match_1",
-        //   tournamentId,
-        //   round: 1,
-        //   matchNumber: 1,
-        //   player1Id: "user_1",
-        //   player2Id: "user_2",
-        //   winnerId: null,
-        //   score: null,
-        //   status: "pending",
-        //   scheduledAt: null,
-        //   completedAt: null,
-        // }
-      ],
-      total: 0,
+      matches,
+      total: matches.length,
     });
   } catch (error) {
     console.error("Error fetching matches:", error);

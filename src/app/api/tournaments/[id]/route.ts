@@ -1,5 +1,6 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 // GET /api/tournaments/[id] - Get tournament details
 export async function GET(
@@ -18,23 +19,80 @@ export async function GET(
 
     const { id: tournamentId } = await params;
 
-    // TODO: Fetch tournament from database by ID
-    // TODO: Check if tournament exists
-    // TODO: Include participant count, match data, and organizer info
-    // TODO: Check user permissions (organizer or participant)
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      include: {
+        owners: true,
+        participants: true,
+        matches: {
+          orderBy: { createdAt: "asc" },
+        },
+        invites: true,
+        _count: {
+          select: {
+            matches: true,
+            participants: true,
+          },
+        },
+      },
+    });
+
+    if (!tournament) {
+      return NextResponse.json(
+        { error: "Tournament not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check if user has access (owner or participant)
+    const isOwner = tournament.owners.some((o) => o.userId === userId);
+    const isParticipant = tournament.participants.some((p) => p.userId === userId);
+
+    if (!isOwner && !isParticipant) {
+      return NextResponse.json(
+        { error: "Access denied" },
+        { status: 403 }
+      );
+    }
+
+    // Fetch user details from Clerk for all participants
+    const participantsWithUserDetails = await Promise.all(
+      tournament.participants.map(async (participant) => {
+        try {
+          const client = await clerkClient();
+          const user = await client.users.getUser(participant.userId);
+          return {
+            ...participant,
+            user: {
+              id: user.id,
+              name: user.firstName && user.lastName 
+                ? `${user.firstName} ${user.lastName}`
+                : user.firstName || user.lastName || null,
+              email: user.emailAddresses[0]?.emailAddress || null,
+            },
+          };
+        } catch (error) {
+          console.error(`Failed to fetch user ${participant.userId}:`, error);
+          return {
+            ...participant,
+            user: {
+              id: participant.userId,
+              name: null,
+              email: null,
+            },
+          };
+        }
+      })
+    );
 
     return NextResponse.json({
       success: true,
       tournament: {
-        id: tournamentId,
-        name: "Placeholder Tournament",
-        format: "single-elimination",
-        status: "draft",
-        maxParticipants: 16,
-        currentParticipants: 0,
-        organizerId: "placeholder_user_id",
-        createdAt: new Date().toISOString(),
+        ...tournament,
+        participants: participantsWithUserDetails,
       },
+      isOwner,
+      isParticipant,
     });
   } catch (error) {
     console.error("Error fetching tournament:", error);
@@ -63,18 +121,53 @@ export async function PATCH(
     const { id: tournamentId } = await params;
     const body = await req.json();
 
-    // TODO: Verify user is tournament organizer
-    // TODO: Validate update fields
-    // TODO: Update tournament in database
-    // TODO: Prevent updates if tournament has started
+    // Verify user is tournament owner
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      include: { owners: true },
+    });
+
+    if (!tournament) {
+      return NextResponse.json(
+        { error: "Tournament not found" },
+        { status: 404 }
+      );
+    }
+
+    const isOwner = tournament.owners.some((o) => o.userId === userId);
+
+    if (!isOwner) {
+      return NextResponse.json(
+        { error: "Only tournament owners can update" },
+        { status: 403 }
+      );
+    }
+
+    // Prevent updates if tournament has started
+    if (tournament.status === "ONGOING" || tournament.status === "FINISHED") {
+      return NextResponse.json(
+        { error: "Cannot update tournament that has started" },
+        { status: 400 }
+      );
+    }
+
+    // Update tournament
+    const updatedTournament = await prisma.tournament.update({
+      where: { id: tournamentId },
+      data: {
+        name: body.name,
+        maxParticipants: body.maxParticipants,
+        joinExpiry: body.joinExpiry ? new Date(body.joinExpiry) : undefined,
+      },
+      include: {
+        owners: true,
+        participants: true,
+      },
+    });
 
     return NextResponse.json({
       success: true,
-      tournament: {
-        id: tournamentId,
-        ...body,
-        updatedAt: new Date().toISOString(),
-      },
+      tournament: updatedTournament,
       message: "Tournament updated successfully",
     });
   } catch (error) {
@@ -103,10 +196,32 @@ export async function DELETE(
 
     const { id: tournamentId } = await params;
 
-    // TODO: Verify user is tournament organizer
-    // TODO: Delete tournament from database
-    // TODO: Notify all participants
-    // TODO: Clean up related matches and data
+    // Verify user is tournament owner
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      include: { owners: true },
+    });
+
+    if (!tournament) {
+      return NextResponse.json(
+        { error: "Tournament not found" },
+        { status: 404 }
+      );
+    }
+
+    const isOwner = tournament.owners.some((o) => o.userId === userId);
+
+    if (!isOwner) {
+      return NextResponse.json(
+        { error: "Only tournament owners can delete" },
+        { status: 403 }
+      );
+    }
+
+    // Delete tournament (cascade will delete related records)
+    await prisma.tournament.delete({
+      where: { id: tournamentId },
+    });
 
     return NextResponse.json({
       success: true,

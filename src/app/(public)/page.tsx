@@ -1,29 +1,28 @@
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Trophy, Target, Zap, BarChart3 } from "lucide-react";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-gray-50">
       {/* Navigation */}
       <nav className="relative z-10 bg-white/80 backdrop-blur-md border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
+              <Trophy className="h-8 w-8 text-indigo-600" />
               <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                🏆 Tourny
+                Tourny
               </span>
             </div>
             <div className="flex space-x-4">
-              <Link 
-                href="/sign-in"
-                className="px-4 py-2 text-gray-700 hover:text-indigo-600 transition-colors duration-200"
-              >
-                Sign In
+              <Link href="/sign-in">
+                <Button variant="ghost">Sign In</Button>
               </Link>
-              <Link 
-                href="/sign-up"
-                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200 shadow-sm"
-              >
-                Get Started
+              <Link href="/sign-up">
+                <Button>Get Started</Button>
               </Link>
             </div>
           </div>
@@ -35,9 +34,10 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
           <div className="text-center">
             <div className="mb-8">
-              <span className="inline-flex items-center px-4 py-2 rounded-full bg-indigo-100 text-indigo-800 text-sm font-medium">
-                ⚡ Automated Matchmaking • Live Tracking • Multiple Formats
-              </span>
+              <Badge variant="secondary" className="px-4 py-2 text-sm flex items-center gap-2 w-fit mx-auto">
+                <Zap className="h-4 w-4" />
+                Automated Matchmaking • Live Tracking • Multiple Formats
+              </Badge>
             </div>
             
             <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-900 mb-6 leading-tight">
@@ -52,17 +52,15 @@ export default function Home() {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Link
-                href="/sign-up"
-                className="px-8 py-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl text-lg font-medium"
-              >
-                Start Free Tournament
+              <Link href="/sign-up">
+                <Button size="lg" className="text-lg">
+                  Start Free Tournament
+                </Button>
               </Link>
-              <Link
-                href="/dashboard"
-                className="px-8 py-4 bg-white text-gray-900 rounded-lg hover:bg-gray-50 transition-all duration-200 shadow-md border border-gray-200 text-lg font-medium"
-              >
-                View Demo
+              <Link href="/dashboard">
+                <Button size="lg" variant="outline" className="text-lg">
+                  View Demo
+                </Button>
               </Link>
             </div>
           </div>
@@ -71,39 +69,51 @@ export default function Home() {
 
       {/* Features Grid */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid md:grid-cols-3 gap-6">
           {/* Feature 1 */}
-          <div className="bg-white rounded-xl p-8 shadow-md hover:shadow-lg transition-shadow duration-200">
-            <div className="text-4xl mb-4">🎯</div>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">
-              Create Tournaments
-            </h3>
-            <p className="text-gray-600">
-              Set up single elimination, double elimination, or round-robin tournaments with custom rules and formats.
-            </p>
-          </div>
+          <Card>
+            <CardHeader>
+              <div className="w-12 h-12 rounded-lg bg-indigo-100 flex items-center justify-center mb-4">
+                <Target className="h-6 w-6 text-indigo-600" />
+              </div>
+              <CardTitle>Create Tournaments</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Set up single elimination, double elimination, or round-robin tournaments with custom rules and formats.
+              </CardDescription>
+            </CardContent>
+          </Card>
 
           {/* Feature 2 */}
-          <div className="bg-white rounded-xl p-8 shadow-md hover:shadow-lg transition-shadow duration-200">
-            <div className="text-4xl mb-4">⚡</div>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">
-              Auto Matchmaking
-            </h3>
-            <p className="text-gray-600">
-              Automated bracket generation and match scheduling based on your tournament format and player count.
-            </p>
-          </div>
+          <Card>
+            <CardHeader>
+              <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center mb-4">
+                <Zap className="h-6 w-6 text-purple-600" />
+              </div>
+              <CardTitle>Auto Matchmaking</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Automated bracket generation and match scheduling based on your tournament format and player count.
+              </CardDescription>
+            </CardContent>
+          </Card>
 
           {/* Feature 3 */}
-          <div className="bg-white rounded-xl p-8 shadow-md hover:shadow-lg transition-shadow duration-200">
-            <div className="text-4xl mb-4">📊</div>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">
-              Live Tracking
-            </h3>
-            <p className="text-gray-600">
-              Real-time progress updates, live brackets, and leaderboards for participants and spectators.
-            </p>
-          </div>
+          <Card>
+            <CardHeader>
+              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center mb-4">
+                <BarChart3 className="h-6 w-6 text-blue-600" />
+              </div>
+              <CardTitle>Live Tracking</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>
+                Real-time progress updates, live brackets, and leaderboards for participants and spectators.
+              </CardDescription>
+            </CardContent>
+          </Card>
         </div>
       </section>
 
@@ -152,20 +162,21 @@ export default function Home() {
 
       {/* CTA Section */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-12 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-            Ready to Start Your Tournament?
-          </h2>
-          <p className="text-xl text-indigo-100 mb-8">
-            Join thousands of organizers running successful tournaments
-          </p>
-          <Link
-            href="/sign-up"
-            className="inline-block px-8 py-4 bg-white text-indigo-600 rounded-lg hover:bg-gray-50 transition-all duration-200 shadow-lg text-lg font-medium"
-          >
-            Create Free Tournament
-          </Link>
-        </div>
+        <Card className="bg-gradient-to-r from-indigo-600 to-purple-600 border-0 text-white">
+          <CardContent className="p-12 text-center">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Ready to Start Your Tournament?
+            </h2>
+            <p className="text-xl text-indigo-100 mb-8">
+              Join thousands of organizers running successful tournaments
+            </p>
+            <Link href="/sign-up">
+              <Button size="lg" variant="secondary" className="text-lg">
+                Create Free Tournament
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
       </section>
 
       {/* Footer */}

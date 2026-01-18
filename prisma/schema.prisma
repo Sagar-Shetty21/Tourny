@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TournamentType {
+  SINGLES
+  DOUBLES
+}
+
+enum MatchmakingMethod {
+  ROUND_ROBIN
+}
+
+enum TournamentStatus {
+  OPEN
+  ONGOING
+  FINISHED
+}
+
+enum MatchStatus {
+  PENDING
+  FINISHED
+}
+
+model Tournament {
+  id                 String             @id @default(uuid())
+  name               String
+  type               TournamentType
+  matchmakingMethod  MatchmakingMethod  @default(ROUND_ROBIN)
+  status             TournamentStatus   @default(OPEN)
+  joinExpiry         DateTime?
+  maxParticipants    Int?
+  createdBy          String
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  owners             TournamentOwner[]
+  participants       Participant[]
+  matches            Match[]
+  invites            Invite[]
+
+  @@index([status])
+  @@index([createdBy])
+}
+
+model TournamentOwner {
+  id           String     @id @default(uuid())
+  tournamentId String
+  userId       String
+  createdAt    DateTime   @default(now())
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+  @@index([userId])
+}
+
+model Participant {
+  id           String     @id @default(uuid())
+  tournamentId String
+  userId       String
+  joinedAt     DateTime   @default(now())
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+  @@index([userId])
+}
+
+model Match {
+  id           String      @id @default(uuid())
+  tournamentId String
+  player1Id    String?
+  player2Id    String?
+  player3Id    String?
+  player4Id    String?
+  status       MatchStatus @default(PENDING)
+  result       Json?
+  scheduledAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  tournament   Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@index([tournamentId])
+  @@index([status])
+}
+
+model Invite {
+  id           String     @id @default(uuid())
+  tournamentId String
+  token        String     @unique
+  expiresAt    DateTime?
+  maxUses      Int?
+  usedCount    Int        @default(0)
+  createdAt    DateTime   @default(now())
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+}
