@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -58,9 +58,53 @@ export async function GET(
       },
     });
 
+    // Fetch user details for all players in the matches
+    const uniquePlayerIds = new Set<string>();
+    matches.forEach((match) => {
+      if (match.player1Id) uniquePlayerIds.add(match.player1Id);
+      if (match.player2Id) uniquePlayerIds.add(match.player2Id);
+      if (match.player3Id) uniquePlayerIds.add(match.player3Id);
+      if (match.player4Id) uniquePlayerIds.add(match.player4Id);
+    });
+
+    // Fetch all user details
+    const client = await clerkClient();
+    const userDetailsMap = new Map();
+    
+    await Promise.all(
+      Array.from(uniquePlayerIds).map(async (playerId) => {
+        try {
+          const user = await client.users.getUser(playerId);
+          userDetailsMap.set(playerId, {
+            id: user.id,
+            name: user.firstName && user.lastName 
+              ? `${user.firstName} ${user.lastName}`
+              : user.firstName || user.lastName || "Unknown Player",
+            email: user.emailAddresses[0]?.emailAddress || null,
+          });
+        } catch (error) {
+          console.error(`Failed to fetch user ${playerId}:`, error);
+          userDetailsMap.set(playerId, {
+            id: playerId,
+            name: "Unknown Player",
+            email: null,
+          });
+        }
+      })
+    );
+
+    // Add user details to matches
+    const matchesWithUserDetails = matches.map((match) => ({
+      ...match,
+      player1: match.player1Id ? userDetailsMap.get(match.player1Id) : null,
+      player2: match.player2Id ? userDetailsMap.get(match.player2Id) : null,
+      player3: match.player3Id ? userDetailsMap.get(match.player3Id) : null,
+      player4: match.player4Id ? userDetailsMap.get(match.player4Id) : null,
+    }));
+
     return NextResponse.json({
       success: true,
-      matches,
+      matches: matchesWithUserDetails,
       total: matches.length,
     });
   } catch (error) {

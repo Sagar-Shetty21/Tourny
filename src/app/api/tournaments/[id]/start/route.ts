@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -18,24 +18,52 @@ function generateSinglesMatches(participantIds: string[]) {
   return matches;
 }
 
-// Generate round-robin matches for doubles (4-player matches)
+// Generate round-robin matches for doubles (2v2 matches)
 function generateDoublesMatches(participantIds: string[]) {
   const matches = [];
   
   // Generate all unique combinations of 4 players
+  const playerCombinations: string[][] = [];
   for (let i = 0; i < participantIds.length; i++) {
     for (let j = i + 1; j < participantIds.length; j++) {
       for (let k = j + 1; k < participantIds.length; k++) {
         for (let l = k + 1; l < participantIds.length; l++) {
-          matches.push({
-            player1Id: participantIds[i],
-            player2Id: participantIds[j],
-            player3Id: participantIds[k],
-            player4Id: participantIds[l],
-          });
+          playerCombinations.push([
+            participantIds[i],
+            participantIds[j],
+            participantIds[k],
+            participantIds[l],
+          ]);
         }
       }
     }
+  }
+  
+  // For each set of 4 players, generate all 3 possible team pairings
+  for (const [p1, p2, p3, p4] of playerCombinations) {
+    // Pairing 1: (p1, p2) vs (p3, p4)
+    matches.push({
+      player1Id: p1,
+      player2Id: p2,
+      player3Id: p3,
+      player4Id: p4,
+    });
+    
+    // Pairing 2: (p1, p3) vs (p2, p4)
+    matches.push({
+      player1Id: p1,
+      player2Id: p3,
+      player3Id: p2,
+      player4Id: p4,
+    });
+    
+    // Pairing 3: (p1, p4) vs (p2, p3)
+    matches.push({
+      player1Id: p1,
+      player2Id: p4,
+      player3Id: p2,
+      player4Id: p3,
+    });
   }
   
   return matches;
@@ -122,6 +150,7 @@ export async function POST(
       prisma.match.createMany({
         data: matchData.map((match) => ({
           tournamentId,
+          status: "PENDING",
           ...match,
         })),
       }),
@@ -133,10 +162,55 @@ export async function POST(
       orderBy: { createdAt: "asc" },
     });
 
+    // Fetch user details for all players in the matches
+    const uniquePlayerIds = new Set<string>();
+    matches.forEach((match) => {
+      if (match.player1Id) uniquePlayerIds.add(match.player1Id);
+      if (match.player2Id) uniquePlayerIds.add(match.player2Id);
+      if (match.player3Id) uniquePlayerIds.add(match.player3Id);
+      if (match.player4Id) uniquePlayerIds.add(match.player4Id);
+    });
+
+    // Fetch all user details
+    const client = await clerkClient();
+    const userDetailsMap = new Map();
+    
+    await Promise.all(
+      Array.from(uniquePlayerIds).map(async (playerId) => {
+        try {
+          const user = await client.users.getUser(playerId);
+          userDetailsMap.set(playerId, {
+            id: user.id,
+            name: user.firstName && user.lastName 
+              ? `${user.firstName} ${user.lastName}`
+              : user.firstName || user.lastName || "Unknown Player",
+            email: user.emailAddresses[0]?.emailAddress || null,
+          });
+        } catch (error) {
+          console.error(`Failed to fetch user ${playerId}:`, error);
+          userDetailsMap.set(playerId, {
+            id: playerId,
+            name: "Unknown Player",
+            email: null,
+          });
+        }
+      })
+    );
+
+    // Add user details to matches
+    const matchesWithUserDetails = matches.map((match) => ({
+      ...match,
+      player1: match.player1Id ? userDetailsMap.get(match.player1Id) : null,
+      player2: match.player2Id ? userDetailsMap.get(match.player2Id) : null,
+      player3: match.player3Id ? userDetailsMap.get(match.player3Id) : null,
+      player4: match.player4Id ? userDetailsMap.get(match.player4Id) : null,
+    }));
+
     return NextResponse.json({
       success: true,
       tournament: updatedTournament,
-      matches,
+      matches: matchesWithUserDetails,
+      matchesCreated: matches.length,
       message: "Tournament started successfully",
     });
   } catch (error) {

@@ -14,9 +14,15 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    // If user is already logged in, redirect to dashboard
+    // If user is already logged in, redirect to intended destination
     if (isLoaded && userId) {
-      router.push("/dashboard");
+      const redirect = sessionStorage.getItem("auth_redirect");
+      if (redirect) {
+        sessionStorage.removeItem("auth_redirect");
+        router.push(redirect);
+      } else {
+        router.push("/dashboard");
+      }
     }
   }, [isLoaded, userId, router]);
 

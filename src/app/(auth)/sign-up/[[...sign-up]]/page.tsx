@@ -1,8 +1,8 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { SignUp } from "@clerk/nextjs";
 import Link from "next/link";
 import { Trophy, Rocket, Gamepad2, Users } from "lucide-react";
@@ -10,11 +10,31 @@ import { Trophy, Rocket, Gamepad2, Users } from "lucide-react";
 export default function SignUpPage() {
   const { userId, isLoaded } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [redirectUrl, setRedirectUrl] = useState<string>("/dashboard");
 
   useEffect(() => {
-    // If user is already logged in, redirect to dashboard
+    // Get redirect URL from query params or sessionStorage
+    const redirect = searchParams.get("redirect");
+    if (redirect) {
+      setRedirectUrl(redirect);
+      // Store in sessionStorage to survive email verification
+      sessionStorage.setItem("auth_redirect", redirect);
+    } else {
+      // Check sessionStorage for stored redirect
+      const storedRedirect = sessionStorage.getItem("auth_redirect");
+      if (storedRedirect) {
+        setRedirectUrl(storedRedirect);
+      }
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    // If user is already logged in, redirect to intended destination
     if (isLoaded && userId) {
-      router.push("/dashboard");
+      const destination = sessionStorage.getItem("auth_redirect") || "/dashboard";
+      sessionStorage.removeItem("auth_redirect");
+      router.push(destination);
     }
   }, [isLoaded, userId, router]);
 
@@ -47,8 +67,9 @@ export default function SignUpPage() {
             }}
             routing="path"
             path="/sign-up"
-            signInUrl="/sign-in"
-            afterSignUpUrl="/dashboard"
+            signInUrl={redirectUrl !== "/dashboard" ? `/sign-in?redirect=${encodeURIComponent(redirectUrl)}` : "/sign-in"}
+            forceRedirectUrl={redirectUrl}
+            fallbackRedirectUrl={redirectUrl}
           />
         </div>
 

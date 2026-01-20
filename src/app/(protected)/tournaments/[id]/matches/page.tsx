@@ -11,12 +11,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ArrowLeft, Info, Trophy, Clock, CheckCircle2, Users, Gamepad2, UserPlus } from "lucide-react";
 
+interface Player {
+  id: string;
+  name: string;
+  email: string | null;
+}
+
 interface Match {
   id: string;
   player1Id: string | null;
   player2Id: string | null;
   player3Id: string | null;
   player4Id: string | null;
+  player1: Player | null;
+  player2: Player | null;
+  player3: Player | null;
+  player4: Player | null;
   status: string;
   result: any;
   createdAt: string;
@@ -152,42 +162,74 @@ export default function MatchesPage() {
               {filteredMatches.map((match, index) => (
                 <div 
                   key={match.id} 
-                  className="p-4 border rounded-lg hover:shadow-md transition-shadow"
+                  className="p-3 sm:p-4 border rounded-lg hover:shadow-md transition-shadow bg-white"
                 >
-                  <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-medium text-gray-500">Match {index + 1}</span>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xs sm:text-sm font-medium text-gray-500">Match {index + 1}</span>
                         {getMatchBadge(match.status)}
                       </div>
-                      <div className="space-y-1">
-                        <p className="text-sm text-gray-700">
-                          Player 1: <span className="font-medium">{match.player1Id || "TBD"}</span>
-                        </p>
-                        <p className="text-sm text-gray-700">
-                          Player 2: <span className="font-medium">{match.player2Id || "TBD"}</span>
-                        </p>
-                        {match.player3Id && (
-                          <p className="text-sm text-gray-700">
-                            Player 3: <span className="font-medium">{match.player3Id}</span>
-                          </p>
-                        )}
-                        {match.player4Id && (
-                          <p className="text-sm text-gray-700">
-                            Player 4: <span className="font-medium">{match.player4Id}</span>
-                          </p>
-                        )}
-                      </div>
+                      
+                      {/* Match Display */}
+                      {match.player3 && match.player4 ? (
+                        // Doubles match - show as Team vs Team
+                        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
+                          <div className="flex-1 bg-blue-50 rounded-lg p-2.5 sm:p-3 border border-blue-200">
+                            <p className="text-xs text-blue-600 font-semibold mb-1">Team 1</p>
+                            <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                              {match.player1?.name || "TBD"}
+                            </p>
+                            <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                              {match.player2?.name || "TBD"}
+                            </p>
+                          </div>
+                          
+                          <div className="flex items-center justify-center py-1 md:px-2">
+                            <span className="text-base sm:text-lg font-bold text-gray-400">VS</span>
+                          </div>
+                          
+                          <div className="flex-1 bg-purple-50 rounded-lg p-2.5 sm:p-3 border border-purple-200">
+                            <p className="text-xs text-purple-600 font-semibold mb-1">Team 2</p>
+                            <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                              {match.player3.name}
+                            </p>
+                            <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                              {match.player4.name}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        // Singles match - show as Player vs Player
+                        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
+                          <div className="flex-1 bg-blue-50 rounded-lg p-2.5 sm:p-3 border border-blue-200 text-center">
+                            <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                              {match.player1?.name || "TBD"}
+                            </p>
+                          </div>
+                          
+                          <div className="flex items-center justify-center py-1 md:px-2">
+                            <span className="text-base sm:text-lg font-bold text-gray-400">VS</span>
+                          </div>
+                          
+                          <div className="flex-1 bg-purple-50 rounded-lg p-2.5 sm:p-3 border border-purple-200 text-center">
+                            <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                              {match.player2?.name || "TBD"}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      
                       {match.result && (
-                        <div className="mt-2 p-2 bg-green-50 rounded text-sm">
-                          <p className="font-medium text-green-800">
+                        <div className="mt-3 p-2 bg-green-50 rounded text-xs sm:text-sm">
+                          <p className="font-medium text-green-800 truncate">
                             Result: {JSON.stringify(match.result)}
                           </p>
                         </div>
                       )}
                     </div>
                     {match.status === "PENDING" && (
-                      <Button size="sm" variant="outline">
+                      <Button size="sm" variant="outline" className="w-full sm:w-auto shrink-0">
                         Submit Result
                       </Button>
                     )}
