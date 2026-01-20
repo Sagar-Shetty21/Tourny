@@ -1,9 +1,8 @@
 // Service Worker for Tourny PWA
-const CACHE_NAME = 'tourny-v1';
+const CACHE_NAME = 'tourny-v2';
 const urlsToCache = [
   '/',
-  '/dashboard',
-  '/tournaments/create',
+  '/offline.html',
 ];
 
 // Install event - cache essential files
@@ -40,6 +39,8 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  
   // Skip non-GET requests
   if (event.request.method !== 'GET') {
     return;
@@ -47,6 +48,15 @@ self.addEventListener('fetch', (event) => {
 
   // Skip Chrome extension requests
   if (event.request.url.startsWith('chrome-extension://')) {
+    return;
+  }
+
+  // Skip Clerk authentication URLs - NEVER cache these
+  if (url.pathname.includes('clerk') || 
+      url.hostname.includes('clerk') ||
+      url.pathname.includes('sign-in') ||
+      url.pathname.includes('sign-up') ||
+      url.pathname.includes('sso-callback')) {
     return;
   }
 
@@ -67,33 +77,63 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first strategy for other requests
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        if (response) {
+  // Network-first strategy for protected routes (dashboard, tournaments)
+  if (url.pathname.startsWith('/dashboard') || url.pathname.startsWith('/tournaments')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          // Only cache successful responses
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                cache.put(event.request, responseToCache);
+              });
+          }
           return response;
-        }
+        })
+        .catch(() => {
+          // Try to serve from cache if offline
+          return caches.match(event.request)
+            .then((cachedResponse) => {
+              return cachedResponse || caches.match('/offline.html');
+            });
+        })
+    );
+    return;
+  }
 
-        return fetch(event.request).then((response) => {
-          // Don't cache non-successful responses
-          if (!response || response.status !== 200 || response.type === 'error') {
+  // Cache-first strategy for static assets only
+  if (url.pathname.match(/\.(js|css|png|jpg|jpeg|svg|gif|woff|woff2|ttf|eot)$/)) {
+    event.respondWith(
+      caches.match(event.request)
+        .then((response) => {
+          if (response) {
             return response;
           }
 
-          // Clone the response
-          const responseToCache = response.clone();
+          return fetch(event.request).then((response) => {
+            if (!response || response.status !== 200 || response.type === 'error') {
+              return response;
+            }
 
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                cache.put(event.request, responseToCache);
+              });
 
-          return response;
-        });
-      })
+            return response;
+          });
+        })
+    );
+    return;
+  }
+
+  // For all other requests, use network-first
+  event.respondWith(
+    fetch(event.request)
       .catch(() => {
-        // Return a custom offline page if available
         return caches.match('/offline.html');
       })
   );

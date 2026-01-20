@@ -1,8 +1,28 @@
+"use client";
+
+import { useAuth } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { SignUp } from "@clerk/nextjs";
 import Link from "next/link";
 import { Trophy, Rocket, Gamepad2, Users } from "lucide-react";
 
 export default function SignUpPage() {
+  const { userId, isLoaded } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    // If user is already logged in, redirect to dashboard
+    if (isLoaded && userId) {
+      router.push("/dashboard");
+    }
+  }, [isLoaded, userId, router]);
+
+  // Don't show sign-up page if user is already logged in
+  if (isLoaded && userId) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">

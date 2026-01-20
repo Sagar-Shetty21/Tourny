@@ -2,7 +2,7 @@
   "name": "Tourny - Tournament Management",
   "short_name": "Tourny",
   "description": "Manage your tournaments and track ongoing matches",
-  "start_url": "/dashboard",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#ffb689",
   "theme_color": "#ffb689",

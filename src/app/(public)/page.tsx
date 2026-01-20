@@ -1,3 +1,8 @@
+"use client";
+
+import { useAuth } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -5,6 +10,21 @@ import { Badge } from "@/components/ui/badge";
 import { Trophy, Target, Zap, BarChart3 } from "lucide-react";
 
 export default function Home() {
+  const { userId, isLoaded } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    // If user is already logged in, redirect to dashboard
+    if (isLoaded && userId) {
+      router.push("/dashboard");
+    }
+  }, [isLoaded, userId, router]);
+
+  // Don't show the home page if user is logged in
+  if (isLoaded && userId) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation */}
