@@ -13,13 +13,13 @@ export function ThemeColor() {
     if (pathname.includes('/sign-in') || pathname.includes('/sign-up')) {
       color = '#ffffff';
     }
-    // White for create tournament page
-    else if (pathname.includes('/tournaments/create')) {
+    // White for tournament's pages
+    else if (pathname.includes('/tournaments')) {
       color = '#ffffff';
     }
-    // #da6c6c for dashboard (already default, but being explicit)
+    // #ffb689 for dashboard (already default, but being explicit)
     else if (pathname.includes('/dashboard')) {
-      color = '#da6c6c';
+      color = '#ffb689';
     }
 
     // Update the theme-color meta tag
