@@ -1,27 +1,33 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
+import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { SignUp } from "@clerk/nextjs";
 import Link from "next/link";
-import { Trophy, Rocket, Gamepad2, Users } from "lucide-react";
+import { Trophy, Rocket, Gamepad2, Users, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function SignUpPage() {
-  const { userId, isLoaded } = useAuth();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [redirectUrl, setRedirectUrl] = useState<string>("/dashboard");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Get redirect URL from query params or sessionStorage
     const redirect = searchParams.get("redirect");
     if (redirect) {
       setRedirectUrl(redirect);
-      // Store in sessionStorage to survive email verification
       sessionStorage.setItem("auth_redirect", redirect);
     } else {
-      // Check sessionStorage for stored redirect
       const storedRedirect = sessionStorage.getItem("auth_redirect");
       if (storedRedirect) {
         setRedirectUrl(storedRedirect);
@@ -30,18 +36,58 @@ export default function SignUpPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    // If user is already logged in, redirect to intended destination
-    if (isLoaded && userId) {
+    if (status === "authenticated" && session) {
       const destination = sessionStorage.getItem("auth_redirect") || "/dashboard";
       sessionStorage.removeItem("auth_redirect");
       router.push(destination);
     }
-  }, [isLoaded, userId, router]);
+  }, [status, session, router]);
 
-  // Don't show sign-up page if user is already logged in
-  if (isLoaded && userId) {
+  if (status === "authenticated") {
     return null;
   }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, email: email || undefined, name: name || undefined }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Registration failed");
+        setLoading(false);
+        return;
+      }
+
+      // Auto sign-in after registration
+      const signInResult = await signIn("credentials", {
+        username,
+        password,
+        redirect: false,
+      });
+
+      if (signInResult?.error) {
+        setError("Account created but sign-in failed. Please sign in manually.");
+        setLoading(false);
+        return;
+      }
+
+      const destination = sessionStorage.getItem("auth_redirect") || "/dashboard";
+      sessionStorage.removeItem("auth_redirect");
+      router.push(destination);
+    } catch {
+      setError("Something went wrong. Please try again.");
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -56,21 +102,79 @@ export default function SignUpPage() {
           <p className="text-gray-600 mt-2">Create your account to organize tournaments</p>
         </div>
 
-        {/* Clerk Sign Up Component */}
-        <div className="flex justify-center">
-          <SignUp 
-            appearance={{
-              elements: {
-                rootBox: "w-full",
-                card: "shadow-lg",
-              },
-            }}
-            routing="path"
-            path="/sign-up"
-            signInUrl={redirectUrl !== "/dashboard" ? `/sign-in?redirect=${encodeURIComponent(redirectUrl)}` : "/sign-in"}
-            forceRedirectUrl={redirectUrl}
-            fallbackRedirectUrl={redirectUrl}
-          />
+        {/* Sign Up Form */}
+        <div className="bg-white shadow-lg rounded-lg p-8">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            <div>
+              <Label htmlFor="username">Username *</Label>
+              <Input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Choose a username"
+                required
+                minLength={3}
+                autoComplete="username"
+              />
+            </div>
+            <div>
+              <Label htmlFor="name">Display Name</Label>
+              <Input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your display name (optional)"
+                autoComplete="name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="email">Email (optional)</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="For password recovery (optional)"
+                autoComplete="email"
+              />
+            </div>
+            <div>
+              <Label htmlFor="password">Password *</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 6 characters"
+                required
+                minLength={6}
+                autoComplete="new-password"
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {loading ? "Creating account..." : "Create Account"}
+            </Button>
+          </form>
+
+          <div className="mt-4 text-center">
+            <p className="text-sm text-gray-600">
+              Already have an account?{" "}
+              <Link
+                href={redirectUrl !== "/dashboard" ? `/sign-in?redirect=${encodeURIComponent(redirectUrl)}` : "/sign-in"}
+                className="text-indigo-600 hover:text-indigo-500 font-medium"
+              >
+                Sign In
+              </Link>
+            </p>
+          </div>
         </div>
 
         {/* Footer Links */}

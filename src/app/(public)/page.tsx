@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
@@ -10,12 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Trophy, Target, Zap, BarChart3 } from "lucide-react";
 
 export default function Home() {
-  const { userId, isLoaded } = useAuth();
+  const { data: session, status } = useSession();
   const router = useRouter();
 
   useEffect(() => {
-    // If user is already logged in, redirect to intended destination
-    if (isLoaded && userId) {
+    if (status === "authenticated" && session) {
       const redirect = sessionStorage.getItem("auth_redirect");
       if (redirect) {
         sessionStorage.removeItem("auth_redirect");
@@ -24,10 +23,9 @@ export default function Home() {
         router.push("/dashboard");
       }
     }
-  }, [isLoaded, userId, router]);
+  }, [status, session, router]);
 
-  // Don't show the home page if user is logged in
-  if (isLoaded && userId) {
+  if (status === "authenticated") {
     return null;
   }
 

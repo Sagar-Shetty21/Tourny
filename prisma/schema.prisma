@@ -27,6 +27,66 @@ enum MatchStatus {
   FINISHED
 }
 
+// ─── Auth.js Models ──────────────────────────────────────────
+
+model User {
+  id            String    @id @default(uuid())
+  username      String    @unique
+  email         String?   @unique
+  password      String
+  name          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts            Account[]
+  sessions            Session[]
+  createdTournaments  Tournament[]
+  ownedTournaments    TournamentOwner[]
+  participations      Participant[]
+  matchesAsPlayer1    Match[] @relation("MatchPlayer1")
+  matchesAsPlayer2    Match[] @relation("MatchPlayer2")
+  matchesAsPlayer3    Match[] @relation("MatchPlayer3")
+  matchesAsPlayer4    Match[] @relation("MatchPlayer4")
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Application Models ──────────────────────────────────────
+
 model Tournament {
   id                 String             @id @default(uuid())
   name               String
@@ -39,6 +99,7 @@ model Tournament {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
+  creator            User               @relation(fields: [createdBy], references: [id])
   owners             TournamentOwner[]
   participants       Participant[]
   matches            Match[]
@@ -55,6 +116,7 @@ model TournamentOwner {
   createdAt    DateTime   @default(now())
 
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tournamentId, userId])
   @@index([userId])
@@ -67,6 +129,7 @@ model Participant {
   joinedAt     DateTime   @default(now())
 
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tournamentId, userId])
   @@index([userId])
@@ -86,6 +149,10 @@ model Match {
   updatedAt    DateTime    @updatedAt
 
   tournament   Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  player1      User?       @relation("MatchPlayer1", fields: [player1Id], references: [id])
+  player2      User?       @relation("MatchPlayer2", fields: [player2Id], references: [id])
+  player3      User?       @relation("MatchPlayer3", fields: [player3Id], references: [id])
+  player4      User?       @relation("MatchPlayer4", fields: [player4Id], references: [id])
 
   @@index([tournamentId])
   @@index([status])

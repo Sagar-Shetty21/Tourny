@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,8 +33,9 @@ export default function JoinTournamentPage({ params }: JoinTournamentPageProps) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
-  const { isSignedIn, isLoaded } = useAuth();
+  const { data: session, status } = useSession();
   const router = useRouter();
+  const isSignedIn = status === "authenticated";
 
   useEffect(() => {
     params.then((p) => setToken(p.token));
@@ -99,7 +100,7 @@ export default function JoinTournamentPage({ params }: JoinTournamentPageProps) 
     }
   };
 
-  if (!isLoaded || loading) {
+  if (status === "loading" || loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center px-4">
         <Card className="w-full max-w-md">

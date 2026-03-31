@@ -1,27 +1,31 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
+import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { SignIn } from "@clerk/nextjs";
 import Link from "next/link";
-import { Trophy, Target, Zap, BarChart3 } from "lucide-react";
+import { Trophy, Target, Zap, BarChart3, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function SignInPage() {
-  const { userId, isLoaded } = useAuth();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [redirectUrl, setRedirectUrl] = useState<string>("/dashboard");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Get redirect URL from query params or sessionStorage
     const redirect = searchParams.get("redirect");
     if (redirect) {
       setRedirectUrl(redirect);
-      // Store in sessionStorage to survive email verification
       sessionStorage.setItem("auth_redirect", redirect);
     } else {
-      // Check sessionStorage for stored redirect
       const storedRedirect = sessionStorage.getItem("auth_redirect");
       if (storedRedirect) {
         setRedirectUrl(storedRedirect);
@@ -30,18 +34,37 @@ export default function SignInPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    // If user is already logged in, redirect to intended destination
-    if (isLoaded && userId) {
+    if (status === "authenticated" && session) {
       const destination = sessionStorage.getItem("auth_redirect") || "/dashboard";
       sessionStorage.removeItem("auth_redirect");
       router.push(destination);
     }
-  }, [isLoaded, userId, router]);
+  }, [status, session, router]);
 
-  // Don't show sign-in page if user is already logged in
-  if (isLoaded && userId) {
+  if (status === "authenticated") {
     return null;
   }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    const result = await signIn("credentials", {
+      username,
+      password,
+      redirect: false,
+    });
+
+    if (result?.error) {
+      setError("Invalid username or password");
+      setLoading(false);
+    } else {
+      const destination = sessionStorage.getItem("auth_redirect") || "/dashboard";
+      sessionStorage.removeItem("auth_redirect");
+      router.push(destination);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -56,21 +79,58 @@ export default function SignInPage() {
           <p className="text-gray-600 mt-2">Sign in to manage your tournaments</p>
         </div>
 
-        {/* Clerk Sign In Component */}
-        <div className="flex justify-center">
-          <SignIn 
-            appearance={{
-              elements: {
-                rootBox: "w-full",
-                card: "shadow-lg",
-              },
-            }}
-            routing="path"
-            path="/sign-in"
-            signUpUrl={redirectUrl !== "/dashboard" ? `/sign-up?redirect=${encodeURIComponent(redirectUrl)}` : "/sign-up"}
-            forceRedirectUrl={redirectUrl}
-            fallbackRedirectUrl={redirectUrl}
-          />
+        {/* Sign In Form */}
+        <div className="bg-white shadow-lg rounded-lg p-8">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            <div>
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter your username"
+                required
+                autoComplete="username"
+              />
+            </div>
+            <div>
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                required
+                autoComplete="current-password"
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {loading ? "Signing in..." : "Sign In"}
+            </Button>
+          </form>
+
+          <div className="mt-4 text-center space-y-2">
+            <Link href="/forgot-password" className="text-sm text-indigo-600 hover:text-indigo-500">
+              Forgot your password?
+            </Link>
+            <p className="text-sm text-gray-600">
+              Don&apos;t have an account?{" "}
+              <Link
+                href={redirectUrl !== "/dashboard" ? `/sign-up?redirect=${encodeURIComponent(redirectUrl)}` : "/sign-up"}
+                className="text-indigo-600 hover:text-indigo-500 font-medium"
+              >
+                Sign Up
+              </Link>
+            </p>
+          </div>
         </div>
 
         {/* Footer Links */}

@@ -1,13 +1,14 @@
 "use client";
 
-import { useAuth, UserButton } from "@clerk/nextjs";
+import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, Home, Trophy, PlusCircle } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Menu, Home, Trophy, PlusCircle, LogOut, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function ProtectedLayout({
@@ -15,18 +16,18 @@ export default function ProtectedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { userId, isLoaded } = useAuth();
+  const { data: session, status } = useSession();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    if (isLoaded && !userId) {
+    if (status === "unauthenticated") {
       router.push("/sign-in");
     }
-  }, [isLoaded, userId, router]);
+  }, [status, router]);
 
-  if (!isLoaded) {
+  if (status === "loading") {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
@@ -37,7 +38,7 @@ export default function ProtectedLayout({
     );
   }
 
-  if (!userId) {
+  if (!session) {
     return null;
   }
 
@@ -80,7 +81,20 @@ export default function ProtectedLayout({
                   </Link>
                 );
               })}
-              <UserButton afterSignOutUrl="/" />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    {(session.user as any)?.username || session.user?.name || "Account"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })}>
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -124,9 +138,12 @@ export default function ProtectedLayout({
           <div className="absolute bottom-0 left-0 right-0 border-t border-gray-100">
             <div className="p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <UserButton afterSignOutUrl="/" />
-                <span className="text-sm font-medium text-gray-700">Profile</span>
+                <User className="h-5 w-5 text-gray-600" />
+                <span className="text-sm font-medium text-gray-700">{(session.user as any)?.username || session.user?.name || "Account"}</span>
               </div>
+              <Button variant="ghost" size="sm" onClick={() => signOut({ callbackUrl: "/" })}>
+                <LogOut className="h-4 w-4" />
+              </Button>
             </div>
             <div className="px-4 pb-4 text-xs text-gray-500 flex items-center justify-between">
               <span>&copy; 2026 Tourny</span>

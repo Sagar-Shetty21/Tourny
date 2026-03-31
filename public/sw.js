@@ -51,12 +51,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Skip Clerk authentication URLs - NEVER cache these
-  if (url.pathname.includes('clerk') || 
-      url.hostname.includes('clerk') ||
-      url.pathname.includes('sign-in') ||
+  // Skip auth-related URLs - NEVER cache these
+  if (url.pathname.includes('sign-in') ||
       url.pathname.includes('sign-up') ||
-      url.pathname.includes('sso-callback')) {
+      url.pathname.includes('/api/auth')) {
     return;
   }
 

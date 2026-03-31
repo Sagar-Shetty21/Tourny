@@ -1,6 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+
+async function fetchTournamentWithUserData(id: string) {
+  const tournament = await prisma.tournament.findUnique({
+    where: { id },
+    include: {
+      owners: true,
+      participants: {
+        include: {
+          user: {
+            select: { id: true, name: true, username: true, email: true },
+          },
+        },
+      },
+      matches: true,
+      _count: {
+        select: { participants: true, matches: true },
+      },
+    },
+  });
+
+  if (!tournament) return null;
+
+  const participantsWithUserData = tournament.participants.map((p) => ({
+    ...p,
+    user: {
+      id: p.user.id,
+      name: p.user.name || p.user.username,
+      email: p.user.email || "",
+    },
+  }));
+
+  return { ...tournament, participants: participantsWithUserData };
+}
 
 // POST: Add a new owner to the tournament
 export async function POST(
@@ -8,7 +41,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId: currentUserId } = await auth();
+    const session = await auth();
+    const currentUserId = session?.user?.id;
     if (!currentUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -59,58 +93,9 @@ export async function POST(
       },
     });
 
-    // Fetch updated tournament with user data
-    const updatedTournament = await prisma.tournament.findUnique({
-      where: { id },
-      include: {
-        owners: true,
-        participants: true,
-        matches: true,
-        _count: {
-          select: {
-            participants: true,
-            matches: true,
-          },
-        },
-      },
-    });
+    const updatedTournament = await fetchTournamentWithUserData(id);
 
-    // Fetch user details for each participant
-    const participantsWithUserData = await Promise.all(
-      (updatedTournament?.participants || []).map(async (participant) => {
-        try {
-          const clerk = await clerkClient();
-          const user = await clerk.users.getUser(participant.userId);
-          return {
-            ...participant,
-            user: {
-              id: user.id,
-              name: user.firstName && user.lastName
-                ? `${user.firstName} ${user.lastName}`
-                : user.firstName || user.lastName || null,
-              email: user.emailAddresses[0]?.emailAddress || "",
-            },
-          };
-        } catch (error) {
-          console.error(`Failed to fetch user ${participant.userId}:`, error);
-          return {
-            ...participant,
-            user: {
-              id: participant.userId,
-              name: null,
-              email: "",
-            },
-          };
-        }
-      })
-    );
-
-    return NextResponse.json({
-      tournament: {
-        ...updatedTournament,
-        participants: participantsWithUserData,
-      },
-    });
+    return NextResponse.json({ tournament: updatedTournament });
   } catch (error) {
     console.error("Error adding owner:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -123,7 +108,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId: currentUserId } = await auth();
+    const session = await auth();
+    const currentUserId = session?.user?.id;
     if (!currentUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -177,58 +163,9 @@ export async function DELETE(
       },
     });
 
-    // Fetch updated tournament with user data
-    const updatedTournament = await prisma.tournament.findUnique({
-      where: { id },
-      include: {
-        owners: true,
-        participants: true,
-        matches: true,
-        _count: {
-          select: {
-            participants: true,
-            matches: true,
-          },
-        },
-      },
-    });
+    const updatedTournament = await fetchTournamentWithUserData(id);
 
-    // Fetch user details for each participant
-    const participantsWithUserData = await Promise.all(
-      (updatedTournament?.participants || []).map(async (participant) => {
-        try {
-          const clerk = await clerkClient();
-          const user = await clerk.users.getUser(participant.userId);
-          return {
-            ...participant,
-            user: {
-              id: user.id,
-              name: user.firstName && user.lastName
-                ? `${user.firstName} ${user.lastName}`
-                : user.firstName || user.lastName || null,
-              email: user.emailAddresses[0]?.emailAddress || "",
-            },
-          };
-        } catch (error) {
-          console.error(`Failed to fetch user ${participant.userId}:`, error);
-          return {
-            ...participant,
-            user: {
-              id: participant.userId,
-              name: null,
-              email: "",
-            },
-          };
-        }
-      })
-    );
-
-    return NextResponse.json({
-      tournament: {
-        ...updatedTournament,
-        participants: participantsWithUserData,
-      },
-    });
+    return NextResponse.json({ tournament: updatedTournament });
   } catch (error) {
     console.error("Error removing owner:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

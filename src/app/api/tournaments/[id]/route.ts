@@ -1,4 +1,4 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -8,7 +8,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
+    const session = await auth();
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json(
@@ -23,7 +24,13 @@ export async function GET(
       where: { id: tournamentId },
       include: {
         owners: true,
-        participants: true,
+        participants: {
+          include: {
+            user: {
+              select: { id: true, name: true, username: true, email: true },
+            },
+          },
+        },
         matches: {
           orderBy: { createdAt: "asc" },
         },
@@ -55,35 +62,15 @@ export async function GET(
       );
     }
 
-    // Fetch user details from Clerk for all participants
-    const participantsWithUserDetails = await Promise.all(
-      tournament.participants.map(async (participant) => {
-        try {
-          const client = await clerkClient();
-          const user = await client.users.getUser(participant.userId);
-          return {
-            ...participant,
-            user: {
-              id: user.id,
-              name: user.firstName && user.lastName 
-                ? `${user.firstName} ${user.lastName}`
-                : user.firstName || user.lastName || null,
-              email: user.emailAddresses[0]?.emailAddress || null,
-            },
-          };
-        } catch (error) {
-          console.error(`Failed to fetch user ${participant.userId}:`, error);
-          return {
-            ...participant,
-            user: {
-              id: participant.userId,
-              name: null,
-              email: null,
-            },
-          };
-        }
-      })
-    );
+    // Map participants to include user details
+    const participantsWithUserDetails = tournament.participants.map((participant) => ({
+      ...participant,
+      user: {
+        id: participant.user.id,
+        name: participant.user.name || participant.user.username,
+        email: participant.user.email || null,
+      },
+    }));
 
     return NextResponse.json({
       success: true,
@@ -109,7 +96,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
+    const session = await auth();
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json(
@@ -185,7 +173,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
+    const session = await auth();
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json(

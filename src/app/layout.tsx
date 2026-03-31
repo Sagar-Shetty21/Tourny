@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { ClerkProvider } from '@clerk/nextjs';
+import AuthProvider from "@/components/AuthProvider";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeColor } from "@/components/ThemeColor";
 import "./globals.css";
@@ -46,7 +46,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
+    <AuthProvider>
       <html lang="en">
         <head>
           <link rel="manifest" href="/manifest.json" />
@@ -96,6 +96,6 @@ export default function RootLayout({
           }} />
         </body>
       </html>
-    </ClerkProvider>
+    </AuthProvider>
   );
 }

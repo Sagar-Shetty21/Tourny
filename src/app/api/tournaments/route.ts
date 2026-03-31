@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { randomBytes } from "crypto";
@@ -6,7 +6,8 @@ import { randomBytes } from "crypto";
 // POST /api/tournaments - Create a new tournament
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth();
+    const session = await auth();
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json(
@@ -87,7 +88,8 @@ export async function POST(req: NextRequest) {
 // GET /api/tournaments - Get all tournaments (user's tournaments or public ones)
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = await auth();
+    const session = await auth();
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json(

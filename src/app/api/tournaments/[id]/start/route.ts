@@ -1,4 +1,4 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -75,7 +75,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth();
+    const session = await auth();
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json(
@@ -171,30 +172,13 @@ export async function POST(
       if (match.player4Id) uniquePlayerIds.add(match.player4Id);
     });
 
-    // Fetch all user details
-    const client = await clerkClient();
-    const userDetailsMap = new Map();
-    
-    await Promise.all(
-      Array.from(uniquePlayerIds).map(async (playerId) => {
-        try {
-          const user = await client.users.getUser(playerId);
-          userDetailsMap.set(playerId, {
-            id: user.id,
-            name: user.firstName && user.lastName 
-              ? `${user.firstName} ${user.lastName}`
-              : user.firstName || user.lastName || "Unknown Player",
-            email: user.emailAddresses[0]?.emailAddress || null,
-          });
-        } catch (error) {
-          console.error(`Failed to fetch user ${playerId}:`, error);
-          userDetailsMap.set(playerId, {
-            id: playerId,
-            name: "Unknown Player",
-            email: null,
-          });
-        }
-      })
+    // Fetch all user details from local DB
+    const users = await prisma.user.findMany({
+      where: { id: { in: Array.from(uniquePlayerIds) } },
+      select: { id: true, name: true, username: true, email: true },
+    });
+    const userDetailsMap = new Map(
+      users.map((u) => [u.id, { id: u.id, name: u.name || u.username, email: u.email }])
     );
 
     // Add user details to matches

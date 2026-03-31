@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -51,7 +51,7 @@ interface Tournament {
 export default function SettingsPage() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useUser();
+  const { data: session } = useSession();
   const id = params.id as string;
   
   const [tournament, setTournament] = useState<Tournament | null>(null);
@@ -239,7 +239,7 @@ export default function SettingsPage() {
               <CardContent>
                 <div className="space-y-3">
                   {tournament.participants
-                    .filter((participant) => participant.userId !== user?.id)
+                    .filter((participant) => participant.userId !== session?.user?.id)
                     .map((participant) => {
                     const isCurrentOwner = tournament.owners.some(
                       (owner) => owner.userId === participant.userId
