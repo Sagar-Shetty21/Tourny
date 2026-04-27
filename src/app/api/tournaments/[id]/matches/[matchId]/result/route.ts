@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getUserRole, logActivity } from "@/lib/tournament-utils";
 
 // POST /api/tournaments/[id]/matches/[matchId]/result - Submit match result
 export async function POST(
@@ -29,13 +30,20 @@ export async function POST(
       );
     }
 
+    // Verify user is organizer or manager
+    const role = await getUserRole(tournamentId, userId);
+    if (role !== "organizer" && role !== "manager") {
+      return NextResponse.json(
+        { error: "Only organizers and managers can submit results" },
+        { status: 403 }
+      );
+    }
+
     // Verify match exists and belongs to tournament
     const match = await prisma.match.findUnique({
       where: { id: matchId },
       include: {
-        tournament: {
-          include: { owners: true },
-        },
+        tournament: true,
       },
     });
 
@@ -53,13 +61,11 @@ export async function POST(
       );
     }
 
-    // Verify user is tournament owner
-    const isOwner = match.tournament.owners.some((o) => o.userId === userId);
-
-    if (!isOwner) {
+    // Block if tournament is not ONGOING
+    if (match.tournament.status !== "ONGOING") {
       return NextResponse.json(
-        { error: "Only tournament owners can submit results" },
-        { status: 403 }
+        { error: "Can only submit results for ongoing tournaments" },
+        { status: 400 }
       );
     }
 
@@ -80,7 +86,12 @@ export async function POST(
       },
     });
 
-    // Check if all matches are finished
+    await logActivity(tournamentId, userId, "MATCH_RESULT_SUBMITTED", {
+      matchId,
+      result,
+    });
+
+    // Check if all matches are finished (inform frontend, but don't auto-finish)
     const pendingMatches = await prisma.match.count({
       where: {
         tournamentId,
@@ -88,21 +99,12 @@ export async function POST(
       },
     });
 
-    let tournamentComplete = false;
-
-    // If no pending matches, mark tournament as finished
-    if (pendingMatches === 0) {
-      await prisma.tournament.update({
-        where: { id: tournamentId },
-        data: { status: "FINISHED" },
-      });
-      tournamentComplete = true;
-    }
+    const allMatchesComplete = pendingMatches === 0;
 
     return NextResponse.json({
       success: true,
       match: updatedMatch,
-      tournamentComplete,
+      allMatchesComplete,
       message: "Match result submitted successfully",
     });
   } catch (error) {

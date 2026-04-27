@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { randomBytes } from "crypto";
+import { logActivity } from "@/lib/tournament-utils";
 
 // POST /api/tournaments - Create a new tournament
 export async function POST(req: NextRequest) {
@@ -51,6 +52,7 @@ export async function POST(req: NextRequest) {
         owners: {
           create: {
             userId,
+            role: "ORGANIZER",
           },
         },
         invites: {
@@ -66,6 +68,8 @@ export async function POST(req: NextRequest) {
         invites: true,
       },
     });
+
+    await logActivity(tournament.id, userId, "TOURNAMENT_CREATED", { name: tournament.name });
 
     return NextResponse.json(
       {

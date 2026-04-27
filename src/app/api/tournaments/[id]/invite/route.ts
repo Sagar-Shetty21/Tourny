@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { randomBytes } from "crypto";
+import { getUserRole, logActivity } from "@/lib/tournament-utils";
 
 // POST /api/tournaments/[id]/invite - Generate or retrieve invitation token
 export async function POST(
@@ -23,10 +24,18 @@ export async function POST(
     const body = await req.json();
     const { expiresInDays, maxUses } = body;
 
-    // Verify user is tournament owner
+    // Verify user is organizer or manager
+    const role = await getUserRole(tournamentId, userId);
+    if (role !== "organizer" && role !== "manager") {
+      return NextResponse.json(
+        { error: "Only organizers and managers can generate invites" },
+        { status: 403 }
+      );
+    }
+
+    // Verify tournament exists and is OPEN
     const tournament = await prisma.tournament.findUnique({
       where: { id: tournamentId },
-      include: { owners: true },
     });
 
     if (!tournament) {
@@ -36,12 +45,10 @@ export async function POST(
       );
     }
 
-    const isOwner = tournament.owners.some((o) => o.userId === userId);
-
-    if (!isOwner) {
+    if (tournament.status !== "OPEN") {
       return NextResponse.json(
-        { error: "Only tournament owners can generate invites" },
-        { status: 403 }
+        { error: "Can only generate invites for tournaments that are open" },
+        { status: 400 }
       );
     }
 
@@ -58,6 +65,10 @@ export async function POST(
         expiresAt,
         maxUses: maxUses || null,
       },
+    });
+
+    await logActivity(tournamentId, userId, "INVITE_GENERATED", {
+      inviteId: invite.id,
     });
 
     return NextResponse.json({

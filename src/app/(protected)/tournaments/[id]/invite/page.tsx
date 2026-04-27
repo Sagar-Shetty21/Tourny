@@ -40,6 +40,7 @@ export default function InvitePage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [tournamentStatus, setTournamentStatus] = useState<string>("OPEN");
 
   useEffect(() => {
     fetchInvites();
@@ -51,6 +52,7 @@ export default function InvitePage() {
       const data = await res.json();
 
       if (res.ok) {
+        setTournamentStatus(data.tournament.status || "OPEN");
         const invitesWithLinks = (data.tournament.invites || []).map((invite: Invite) => ({
           ...invite,
           link: invite.link || `${window.location.origin}/join/${invite.token}`,
@@ -157,7 +159,7 @@ export default function InvitePage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Invite Players</h1>
         <p className="text-gray-600 mt-2">
@@ -186,12 +188,14 @@ export default function InvitePage() {
               <span className="hidden sm:inline">Matches</span>
             </Button>
           </Link>
-          <Link href={`/tournaments/${id}/invite`}>
-            <Button variant="outline" className="text-white" style={{ backgroundColor: '#da6c6c' }}>
-              <UserPlus className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Invite</span>
-            </Button>
-          </Link>
+          {tournamentStatus !== "FINISHED" && (
+            <Link href={`/tournaments/${id}/invite`}>
+              <Button variant="outline" className="text-white" style={{ backgroundColor: '#da6c6c' }}>
+                <UserPlus className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Invite</span>
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -201,11 +205,13 @@ export default function InvitePage() {
           <CardHeader>
             <CardTitle>Generate Invitation Link</CardTitle>
             <CardDescription>
-              Create a new link to invite players to your tournament
+              {tournamentStatus !== "OPEN"
+                ? "Invitations are only available when the tournament is open"
+                : "Create a new link to invite players to your tournament"}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={generateNewInvite} disabled={generating || loading} className="w-full sm:w-auto">
+            <Button onClick={generateNewInvite} disabled={generating || loading || tournamentStatus !== "OPEN"} className="w-full sm:w-auto">
               {generating ? (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />

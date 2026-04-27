@@ -22,9 +22,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Info, AlertTriangle, Save } from "lucide-react";
+import { ArrowLeft, Info, AlertTriangle, Save, ScrollText } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { format } from "date-fns";
 
 interface Participant {
   id: string;
@@ -44,8 +45,16 @@ interface Tournament {
   type: string;
   maxParticipants: number;
   createdBy: string;
-  owners: Array<{ userId: string }>;
+  owners: Array<{ userId: string; role: string }>;
   participants: Participant[];
+}
+
+interface ActivityLogEntry {
+  id: string;
+  action: string;
+  details: Record<string, unknown> | null;
+  user: { id: string; name: string };
+  createdAt: string;
 }
 
 export default function SettingsPage() {
@@ -58,8 +67,10 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [isOwner, setIsOwner] = useState(false);
+  const [role, setRole] = useState<string | null>(null);
   const [updatingOwner, setUpdatingOwner] = useState<string | null>(null);
+  const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
   
   // Form state
   const [name, setName] = useState("");
@@ -74,7 +85,7 @@ export default function SettingsPage() {
         const data = await response.json();
         const tournamentData = data.tournament || data;
         setTournament(tournamentData);
-        setIsOwner(data.isOwner || false);
+        setRole(data.role || null);
         setName(tournamentData.name);
         setDescription(tournamentData.description || "");
         setMaxParticipants(tournamentData.maxParticipants);
@@ -90,6 +101,25 @@ export default function SettingsPage() {
       fetchTournament();
     }
   }, [id]);
+
+  useEffect(() => {
+    if (!id || role !== "organizer") return;
+    const fetchLogs = async () => {
+      setLoadingLogs(true);
+      try {
+        const res = await fetch(`/api/tournaments/${id}/activity?limit=20`);
+        if (res.ok) {
+          const data = await res.json();
+          setActivityLogs(data.logs);
+        }
+      } catch {
+        // silent fail
+      } finally {
+        setLoadingLogs(false);
+      }
+    };
+    fetchLogs();
+  }, [id, role]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,7 +168,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
         <Link href={`/tournaments/${id}`}>
           <Button variant="ghost" size="sm">
@@ -227,13 +257,13 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Owner Management - Only visible to owners */}
-          {isOwner && tournament.participants && tournament.participants.length > 1 && (
+          {/* Role Management - Only visible to organizer */}
+          {role === "organizer" && tournament.participants && tournament.participants.length > 1 && (
             <Card>
               <CardHeader>
-                <CardTitle>Owner Management</CardTitle>
+                <CardTitle>Role Management</CardTitle>
                 <CardDescription>
-                  Grant or revoke owner privileges to other participants
+                  Grant or revoke manager privileges to other participants
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -241,9 +271,10 @@ export default function SettingsPage() {
                   {tournament.participants
                     .filter((participant) => participant.userId !== session?.user?.id)
                     .map((participant) => {
-                    const isCurrentOwner = tournament.owners.some(
+                    const ownerEntry = tournament.owners.find(
                       (owner) => owner.userId === participant.userId
                     );
+                    const isManager = ownerEntry?.role === "MANAGER";
                     const isCreator = tournament.createdBy === participant.userId;
                     
                     return (
@@ -262,14 +293,9 @@ export default function SettingsPage() {
                               <p className="font-medium text-gray-900">
                                 {participant.user?.name || participant.user?.email || "Unknown User"}
                               </p>
-                              {isCreator && (
-                                <Badge variant="secondary" className="bg-purple-100 text-purple-700">
-                                  Creator
-                                </Badge>
-                              )}
-                              {isCurrentOwner && !isCreator && (
+                              {isManager && (
                                 <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                                  Owner
+                                  Manager
                                 </Badge>
                               )}
                             </div>
@@ -277,33 +303,33 @@ export default function SettingsPage() {
                           </div>
                         </div>
                         <Button
-                          variant={isCurrentOwner ? "outline" : "default"}
+                          variant={isManager ? "outline" : "default"}
                           size="sm"
                           disabled={updatingOwner === participant.userId || isCreator}
                           onClick={async () => {
                             setUpdatingOwner(participant.userId);
                             try {
                               const response = await fetch(`/api/tournaments/${id}/owners`, {
-                                method: isCurrentOwner ? "DELETE" : "POST",
+                                method: isManager ? "DELETE" : "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ userId: participant.userId }),
                               });
 
                               if (!response.ok) {
                                 const data = await response.json();
-                                throw new Error(data.error || "Failed to update owner");
+                                throw new Error(data.error || "Failed to update role");
                               }
 
                               const data = await response.json();
                               setTournament(data.tournament);
                               toast.success(
-                                isCurrentOwner
-                                  ? "Owner privilege revoked"
-                                  : "Owner privilege granted"
+                                isManager
+                                  ? "Manager privilege revoked"
+                                  : "Manager privilege granted"
                               );
                             } catch (error: any) {
-                              console.error("Error updating owner:", error);
-                              toast.error(error.message || "Failed to update owner privileges");
+                              console.error("Error updating role:", error);
+                              toast.error(error.message || "Failed to update role");
                             } finally {
                               setUpdatingOwner(null);
                             }
@@ -311,16 +337,53 @@ export default function SettingsPage() {
                         >
                           {updatingOwner === participant.userId
                             ? "Updating..."
-                            : isCreator
-                            ? "Creator"
-                            : isCurrentOwner
-                            ? "Revoke Owner"
-                            : "Make Owner"}
+                            : isManager
+                            ? "Revoke Manager"
+                            : "Make Manager"}
                         </Button>
                       </div>
                     );
                   })}
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Activity Log - Organizer only */}
+          {role === "organizer" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ScrollText className="h-5 w-5" />
+                  Activity Log
+                </CardTitle>
+                <CardDescription>Recent tournament activity</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loadingLogs ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : activityLogs.length === 0 ? (
+                  <p className="text-sm text-gray-500 py-4 text-center">No activity recorded yet</p>
+                ) : (
+                  <div className="space-y-3">
+                    {activityLogs.map((log) => (
+                      <div key={log.id} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 text-sm">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900">
+                            {log.action.replace(/_/g, " ")}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            by {log.user.name} • {format(new Date(log.createdAt), "MMM d, yyyy HH:mm")}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

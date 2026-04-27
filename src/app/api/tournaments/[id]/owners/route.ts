@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getUserRole, logActivity } from "@/lib/tournament-utils";
 
 async function fetchTournamentWithUserData(id: string) {
   const tournament = await prisma.tournament.findUnique({
@@ -35,7 +36,7 @@ async function fetchTournamentWithUserData(id: string) {
   return { ...tournament, participants: participantsWithUserData };
 }
 
-// POST: Add a new owner to the tournament
+// POST: Add a new manager to the tournament (organizer only)
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -54,23 +55,19 @@ export async function POST(
       return NextResponse.json({ error: "User ID is required" }, { status: 400 });
     }
 
-    // Check if tournament exists and current user is an owner
+    // Only organizer can manage roles
+    const role = await getUserRole(id, currentUserId);
+    if (role !== "organizer") {
+      return NextResponse.json({ error: "Only the organizer can manage roles" }, { status: 403 });
+    }
+
     const tournament = await prisma.tournament.findUnique({
       where: { id },
-      include: {
-        owners: true,
-        participants: true,
-      },
+      include: { owners: true, participants: true },
     });
 
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
-    }
-
-    // Verify current user is an owner
-    const isOwner = tournament.owners.some((owner) => owner.userId === currentUserId);
-    if (!isOwner) {
-      return NextResponse.json({ error: "Only owners can manage owner privileges" }, { status: 403 });
     }
 
     // Check if target user is a participant
@@ -79,30 +76,36 @@ export async function POST(
       return NextResponse.json({ error: "User must be a participant first" }, { status: 400 });
     }
 
-    // Check if user is already an owner
+    // Check if user is already a manager/owner
     const isAlreadyOwner = tournament.owners.some((owner) => owner.userId === userId);
     if (isAlreadyOwner) {
-      return NextResponse.json({ error: "User is already an owner" }, { status: 400 });
+      return NextResponse.json({ error: "User already has a role" }, { status: 400 });
     }
 
-    // Add user as owner
+    // Add user as manager
     await prisma.tournamentOwner.create({
       data: {
         tournamentId: id,
         userId,
+        role: "MANAGER",
       },
+    });
+
+    await logActivity(id, currentUserId, "ROLE_CHANGED", {
+      targetUserId: userId,
+      newRole: "MANAGER",
     });
 
     const updatedTournament = await fetchTournamentWithUserData(id);
 
     return NextResponse.json({ tournament: updatedTournament });
   } catch (error) {
-    console.error("Error adding owner:", error);
+    console.error("Error adding manager:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// DELETE: Remove an owner from the tournament
+// DELETE: Remove a manager from the tournament (organizer only)
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -121,53 +124,47 @@ export async function DELETE(
       return NextResponse.json({ error: "User ID is required" }, { status: 400 });
     }
 
-    // Check if tournament exists and current user is an owner
+    // Only organizer can manage roles
+    const role = await getUserRole(id, currentUserId);
+    if (role !== "organizer") {
+      return NextResponse.json({ error: "Only the organizer can manage roles" }, { status: 403 });
+    }
+
     const tournament = await prisma.tournament.findUnique({
       where: { id },
-      include: {
-        owners: true,
-        participants: true,
-      },
+      include: { owners: true },
     });
 
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
     }
 
-    // Verify current user is an owner
-    const isOwner = tournament.owners.some((owner) => owner.userId === currentUserId);
-    if (!isOwner) {
-      return NextResponse.json({ error: "Only owners can manage owner privileges" }, { status: 403 });
-    }
-
-    // Prevent removing the last owner
-    if (tournament.owners.length === 1) {
-      return NextResponse.json({ error: "Cannot remove the last owner" }, { status: 400 });
-    }
-
-    // Check if target user is an owner
+    // Find the target owner entry
     const targetOwner = tournament.owners.find((owner) => owner.userId === userId);
     if (!targetOwner) {
-      return NextResponse.json({ error: "User is not an owner" }, { status: 400 });
+      return NextResponse.json({ error: "User is not a manager" }, { status: 400 });
     }
 
-    // Prevent removing the creator
-    if (tournament.createdBy === userId) {
-      return NextResponse.json({ error: "Cannot remove the tournament creator" }, { status: 400 });
+    // Cannot remove the organizer
+    if (targetOwner.role === "ORGANIZER") {
+      return NextResponse.json({ error: "Cannot remove the tournament organizer" }, { status: 400 });
     }
 
-    // Remove owner privilege
+    // Remove manager privilege
     await prisma.tournamentOwner.delete({
-      where: {
-        id: targetOwner.id,
-      },
+      where: { id: targetOwner.id },
+    });
+
+    await logActivity(id, currentUserId, "ROLE_CHANGED", {
+      targetUserId: userId,
+      newRole: "REMOVED",
     });
 
     const updatedTournament = await fetchTournamentWithUserData(id);
 
     return NextResponse.json({ tournament: updatedTournament });
   } catch (error) {
-    console.error("Error removing owner:", error);
+    console.error("Error removing manager:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

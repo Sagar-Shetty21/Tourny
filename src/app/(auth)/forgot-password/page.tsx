@@ -2,11 +2,18 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Trophy, Loader2, Mail } from "lucide-react";
+import { Loader2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -42,42 +49,43 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <Trophy className="h-10 w-10 text-indigo-600" />
-            <h1 className="text-4xl font-bold text-gray-900">Tourny</h1>
-          </div>
-          <h2 className="text-2xl font-semibold text-gray-700">Reset Password</h2>
-          <p className="text-gray-600 mt-2">
-            {sent ? "Check your email for a reset link" : "Enter your email to receive a reset link"}
-          </p>
-        </div>
+    <>
+      <CardHeader className="text-center px-0 pt-0">
+        <CardTitle className="text-2xl font-semibold text-foreground">
+          Reset Password
+        </CardTitle>
+        <CardDescription className="text-muted-foreground">
+          {sent
+            ? "Check your email for a reset link"
+            : "Enter your email to receive a reset link"}
+        </CardDescription>
+      </CardHeader>
 
-        <div className="bg-white shadow-lg rounded-lg p-8">
+      <Card className="border border-border shadow-sm">
+        <CardContent className="p-6 sm:p-8">
           {sent ? (
-            <div className="text-center space-y-4">
-              <div className="mx-auto w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-                <Mail className="h-8 w-8 text-green-600" />
+            <div className="text-center space-y-5">
+              <div className="mx-auto w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                <Mail className="h-8 w-8 text-green-600 dark:text-green-400" />
               </div>
-              <p className="text-gray-600">
-                If an account with that email exists, we&apos;ve sent a password reset link.
+              <p className="text-muted-foreground text-sm">
+                If an account with that email exists, we&apos;ve sent a password
+                reset link.
               </p>
               <Link href="/sign-in">
-                <Button variant="outline" className="w-full">
+                <Button variant="outline" className="w-full h-11">
                   Back to Sign In
                 </Button>
               </Link>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-5">
               {error && (
                 <Alert variant="destructive">
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
@@ -87,24 +95,33 @@ export default function ForgotPasswordPage() {
                   placeholder="Enter your email"
                   required
                   autoComplete="email"
+                  className="h-11"
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button
+                type="submit"
+                className="w-full h-11 text-sm font-semibold"
+                disabled={loading}
+              >
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {loading ? "Sending..." : "Send Reset Link"}
               </Button>
             </form>
           )}
+        </CardContent>
+      </Card>
 
-          {!sent && (
-            <div className="mt-4 text-center">
-              <Link href="/sign-in" className="text-sm text-indigo-600 hover:text-indigo-500">
-                Back to Sign In
-              </Link>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      {!sent && (
+        <p className="text-center text-sm text-muted-foreground mt-6">
+          Remember your password?{" "}
+          <Link
+            href="/sign-in"
+            className="text-primary hover:text-primary/80 font-medium transition-colors"
+          >
+            Sign In
+          </Link>
+        </p>
+      )}
+    </>
   );
 }

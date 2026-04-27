@@ -25,7 +25,8 @@ interface Participant {
 interface Tournament {
   id: string;
   name: string;
-  owners: Array<{ userId: string }>;
+  status: string;
+  owners: Array<{ userId: string; role: string }>;
   maxParticipants: number;
   participants: Participant[];
 }
@@ -48,6 +49,7 @@ export default function PlayersPage() {
         
         setTournament({
           ...tournamentData,
+          status: tournamentData.status || "OPEN",
           participants: tournamentData.participants || [],
         });
       } catch (error) {
@@ -63,7 +65,7 @@ export default function PlayersPage() {
   }, [id]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Players</h1>
         <p className="text-gray-600 mt-2">
@@ -92,12 +94,14 @@ export default function PlayersPage() {
               <span className="hidden sm:inline">Matches</span>
             </Button>
           </Link>
-          <Link href={`/tournaments/${id}/invite`}>
-            <Button variant="outline">
-              <UserPlus className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Invite</span>
-            </Button>
-          </Link>
+          {tournament?.status !== "FINISHED" && (
+            <Link href={`/tournaments/${id}/invite`}>
+              <Button variant="outline">
+                <UserPlus className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Invite</span>
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -175,10 +179,15 @@ export default function PlayersPage() {
                               <h3 className="font-semibold text-gray-900">
                                 {participant.user?.name || participant.user?.email || 'Unknown User'}
                               </h3>
-                              {tournament.owners.some(owner => owner.userId === participant.userId) && (
+                              {tournament.owners.some(owner => owner.userId === participant.userId && owner.role === "ORGANIZER") && (
                                 <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">
                                   <Crown className="h-3 w-3 mr-1" />
                                   Organizer
+                                </Badge>
+                              )}
+                              {tournament.owners.some(owner => owner.userId === participant.userId && owner.role === "MANAGER") && (
+                                <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                                  Manager
                                 </Badge>
                               )}
                             </div>

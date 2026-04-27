@@ -4,11 +4,18 @@ import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Trophy, Rocket, Gamepad2, Users, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export default function SignUpPage() {
   const { data: session, status } = useSession();
@@ -90,28 +97,28 @@ export default function SignUpPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <Trophy className="h-10 w-10 text-indigo-600" />
-            <h1 className="text-4xl font-bold text-gray-900">Tourny</h1>
-          </div>
-          <h2 className="text-2xl font-semibold text-gray-700">Get Started</h2>
-          <p className="text-gray-600 mt-2">Create your account to organize tournaments</p>
-        </div>
+    <>
+      <CardHeader className="text-center px-0 pt-0">
+        <CardTitle className="text-2xl font-semibold text-foreground">
+          Get Started
+        </CardTitle>
+        <CardDescription className="text-muted-foreground">
+          Create your account to organize tournaments
+        </CardDescription>
+      </CardHeader>
 
-        {/* Sign Up Form */}
-        <div className="bg-white shadow-lg rounded-lg p-8">
-          <form onSubmit={handleSubmit} className="space-y-4">
+      <Card className="border border-border shadow-sm">
+        <CardContent className="p-6 sm:p-8">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            <div>
-              <Label htmlFor="username">Username *</Label>
+            <div className="space-y-2">
+              <Label htmlFor="username">
+                Username <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="username"
                 type="text"
@@ -121,9 +128,10 @@ export default function SignUpPage() {
                 required
                 minLength={3}
                 autoComplete="username"
+                className="h-11"
               />
             </div>
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="name">Display Name</Label>
               <Input
                 id="name"
@@ -132,10 +140,11 @@ export default function SignUpPage() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Your display name (optional)"
                 autoComplete="name"
+                className="h-11"
               />
             </div>
-            <div>
-              <Label htmlFor="email">Email (optional)</Label>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -143,10 +152,13 @@ export default function SignUpPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="For password recovery (optional)"
                 autoComplete="email"
+                className="h-11"
               />
             </div>
-            <div>
-              <Label htmlFor="password">Password *</Label>
+            <div className="space-y-2">
+              <Label htmlFor="password">
+                Password <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="password"
                 type="password"
@@ -156,69 +168,34 @@ export default function SignUpPage() {
                 required
                 minLength={6}
                 autoComplete="new-password"
+                className="h-11"
               />
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button
+              type="submit"
+              className="w-full h-11 text-sm font-semibold"
+              disabled={loading}
+            >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {loading ? "Creating account..." : "Create Account"}
             </Button>
           </form>
+        </CardContent>
+      </Card>
 
-          <div className="mt-4 text-center">
-            <p className="text-sm text-gray-600">
-              Already have an account?{" "}
-              <Link
-                href={redirectUrl !== "/dashboard" ? `/sign-in?redirect=${encodeURIComponent(redirectUrl)}` : "/sign-in"}
-                className="text-indigo-600 hover:text-indigo-500 font-medium"
-              >
-                Sign In
-              </Link>
-            </p>
-          </div>
-        </div>
-
-        {/* Footer Links */}
-        <div className="mt-6 text-center">
-          <Link 
-            href="/" 
-            className="text-sm text-gray-500 hover:text-gray-700 transition duration-200"
-          >
-            ← Back to Home
-          </Link>
-        </div>
-      </div>
-
-      {/* Bottom Features */}
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-2xl">
-        <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 mx-4">
-          <h3 className="text-lg font-semibold text-gray-800 text-center mb-4">
-            Why Choose Tourny?
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-            <div className="p-4">
-              <div className="w-12 h-12 rounded-lg bg-indigo-100 flex items-center justify-center mx-auto mb-2">
-                <Rocket className="h-6 w-6 text-indigo-600" />
-              </div>
-              <h4 className="font-medium text-gray-700">Quick Setup</h4>
-              <p className="text-sm text-gray-600">Create tournaments in minutes</p>
-            </div>
-            <div className="p-4">
-              <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center mx-auto mb-2">
-                <Gamepad2 className="h-6 w-6 text-purple-600" />
-              </div>
-              <h4 className="font-medium text-gray-700">Multiple Formats</h4>
-              <p className="text-sm text-gray-600">Single/Double elimination & Round robin</p>
-            </div>
-            <div className="p-4">
-              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center mx-auto mb-2">
-                <Users className="h-6 w-6 text-blue-600" />
-              </div>
-              <h4 className="font-medium text-gray-700">Easy Invites</h4>
-              <p className="text-sm text-gray-600">Share links to invite participants</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      <p className="text-center text-sm text-muted-foreground mt-6">
+        Already have an account?{" "}
+        <Link
+          href={
+            redirectUrl !== "/dashboard"
+              ? `/sign-in?redirect=${encodeURIComponent(redirectUrl)}`
+              : "/sign-in"
+          }
+          className="text-primary hover:text-primary/80 font-medium transition-colors"
+        >
+          Sign In
+        </Link>
+      </p>
+    </>
   );
 }

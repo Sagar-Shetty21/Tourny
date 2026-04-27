@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { logActivity } from "@/lib/tournament-utils";
 
 // POST /api/tournaments/[id]/join - Join a tournament
 export async function POST(
@@ -119,6 +120,8 @@ export async function POST(
         },
       }),
     ]);
+
+    await logActivity(tournamentId, userId, "PLAYER_JOINED");
 
     return NextResponse.json({
       success: true,

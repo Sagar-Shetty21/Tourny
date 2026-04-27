@@ -27,6 +27,11 @@ enum MatchStatus {
   FINISHED
 }
 
+enum TournamentRole {
+  ORGANIZER
+  MANAGER
+}
+
 // ─── Auth.js Models ──────────────────────────────────────────
 
 model User {
@@ -47,6 +52,8 @@ model User {
   matchesAsPlayer2    Match[] @relation("MatchPlayer2")
   matchesAsPlayer3    Match[] @relation("MatchPlayer3")
   matchesAsPlayer4    Match[] @relation("MatchPlayer4")
+  activityLogs        ActivityLog[]
+  finishVotes         TournamentFinishVote[]
 }
 
 model Account {
@@ -104,16 +111,19 @@ model Tournament {
   participants       Participant[]
   matches            Match[]
   invites            Invite[]
+  activityLogs       ActivityLog[]
+  finishVotes        TournamentFinishVote[]
 
   @@index([status])
   @@index([createdBy])
 }
 
 model TournamentOwner {
-  id           String     @id @default(uuid())
+  id           String         @id @default(uuid())
   tournamentId String
   userId       String
-  createdAt    DateTime   @default(now())
+  role         TournamentRole @default(MANAGER)
+  createdAt    DateTime       @default(now())
 
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -170,4 +180,30 @@ model Invite {
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
 
   @@index([token])
+}
+
+model ActivityLog {
+  id           String     @id @default(uuid())
+  tournamentId String
+  userId       String
+  action       String
+  details      Json?
+  createdAt    DateTime   @default(now())
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tournamentId, createdAt])
+}
+
+model TournamentFinishVote {
+  id           String     @id @default(uuid())
+  tournamentId String
+  userId       String
+  createdAt    DateTime   @default(now())
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
 }

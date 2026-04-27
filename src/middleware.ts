@@ -8,7 +8,8 @@ export default auth((req) => {
   const { pathname } = req.nextUrl;
   const isLoggedIn = !!req.auth;
 
-  const isProtected = protectedRoutes.some(
+  const isPublicPage = pathname.endsWith("/public");
+  const isProtected = !isPublicPage && protectedRoutes.some(
     (route) => pathname === route || pathname.startsWith(route + "/")
   );
   const isAuthRoute = authRoutes.some(

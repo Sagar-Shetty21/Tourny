@@ -1,6 +1,16 @@
 import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getUserRole, logActivity } from "@/lib/tournament-utils";
+
+// Fisher-Yates shuffle
+function shuffle<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
 
 // Generate round-robin matches for singles
 function generateSinglesMatches(participantIds: string[]) {
@@ -103,11 +113,11 @@ export async function POST(
       );
     }
 
-    const isOwner = tournament.owners.some((o) => o.userId === userId);
+    const role = await getUserRole(tournamentId, userId);
 
-    if (!isOwner) {
+    if (role !== "organizer") {
       return NextResponse.json(
-        { error: "Only tournament owners can start the tournament" },
+        { error: "Only the tournament organizer can start the tournament" },
         { status: 403 }
       );
     }
@@ -134,9 +144,11 @@ export async function POST(
 
     // Generate matches based on tournament type
     const participantIds = tournament.participants.map((p) => p.userId);
-    const matchData = tournament.type === "SINGLES" 
-      ? generateSinglesMatches(participantIds)
-      : generateDoublesMatches(participantIds);
+    const matchData = shuffle(
+      tournament.type === "SINGLES"
+        ? generateSinglesMatches(participantIds)
+        : generateDoublesMatches(participantIds)
+    );
 
     // Create matches and update tournament status in a transaction
     const [updatedTournament, createdMatches] = await prisma.$transaction([
@@ -156,6 +168,10 @@ export async function POST(
         })),
       }),
     ]);
+
+    await logActivity(tournamentId, userId, "TOURNAMENT_STARTED", {
+      matchCount: matchData.length,
+    });
 
     // Fetch created matches
     const matches = await prisma.match.findMany({
