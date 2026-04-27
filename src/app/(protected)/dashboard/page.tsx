@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PlusCircle, Trophy, CheckCircle2, Clock, Users, Target } from "lucide-react";
+import { PlusCircle, Trophy, CheckCircle2, Clock, Users, Target, ChevronRight, Gamepad2, LayoutGrid } from "lucide-react";
 
 interface Tournament {
   id: string;
@@ -62,32 +62,67 @@ export default function DashboardPage() {
     fetchTournaments();
   }, []);
 
+  const totalPlayers = tournaments.reduce((acc, t) => acc + t._count.participants, 0);
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "OPEN":
-        return <Badge variant="secondary" className="bg-blue-100 text-blue-700">Open</Badge>;
+        return <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs font-medium px-2 py-0.5 rounded-full">Open</Badge>;
       case "ONGOING":
-        return <Badge variant="secondary" className="bg-green-100 text-green-700">Ongoing</Badge>;
+        return <Badge className="bg-green-100 text-green-700 border-green-200 text-xs font-medium px-2 py-0.5 rounded-full">Ongoing</Badge>;
       case "FINISHED":
-        return <Badge variant="secondary" className="bg-gray-100 text-gray-700">Finished</Badge>;
+        return <Badge className="bg-gray-100 text-gray-600 border-gray-200 text-xs font-medium px-2 py-0.5 rounded-full">Finished</Badge>;
       default:
-        return <Badge variant="secondary">{status}</Badge>;
+        return <Badge className="text-xs font-medium px-2 py-0.5 rounded-full">{status}</Badge>;
     }
   };
 
+  const renderTournamentCard = (tournament: Tournament) => (
+    <Link
+      key={tournament.id}
+      href={`/tournaments/${tournament.id}`}
+      className="block"
+    >
+      <Card className="hover:shadow-md transition-all border border-gray-200 py-0">
+        <CardContent className="flex items-center justify-between py-3 px-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-sm font-semibold text-gray-900 truncate">
+                {tournament.name}
+              </h3>
+              {getStatusBadge(tournament.status)}
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+              <Users className="h-3 w-3" />
+              <span>{tournament._count.participants} players</span>
+              <span className="text-gray-300">|</span>
+              <Gamepad2 className="h-3 w-3" />
+              <span>{tournament._count.matches} matches</span>
+              <span className="text-gray-300">|</span>
+              <LayoutGrid className="h-3 w-3" />
+              <span>{tournament.type}</span>
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 text-gray-400 shrink-0 ml-2" />
+        </CardContent>
+      </Card>
+    </Link>
+  );
+
   return (
-    <div className="min-h-screen md:bg-white">
+    <div className="min-h-screen bg-white md:bg-white">
       {/* Mobile Header Section with Bento Grid */}
-      <div className="md:hidden min-h-screen" style={{ backgroundColor: '#ffb689' }}>
-        <div className="px-4 pt-6 pb-4">
-          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-          <p className="text-blue-50 mt-1">
-            Manage your tournaments
-          </p>
-        </div>
+      <div className="md:hidden">
+        <div style={{ backgroundColor: '#ffb689' }}>
+          <div className="px-4 pt-6 pb-4">
+            <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+            <p className="text-blue-50 mt-1">
+              Manage your tournaments
+            </p>
+          </div>
 
         {/* Bento Grid for Mobile */}
-        <div className="px-4 mb-6">
+        <div className="px-4 pb-6">
           <div className="grid grid-cols-2 gap-3">
             {/* Create Tournament - Large */}
             <Link href="/tournaments/create" className="col-span-2">
@@ -107,61 +142,62 @@ export default function DashboardPage() {
             </Link>
 
             {/* Active Tournaments */}
-            <Card className="bg-white backdrop-blur border-0 shadow-lg">
-              <CardHeader className="pb-2">
-                <Trophy className="h-6 w-6 text-indigo-600 mb-1" />
-                <CardTitle className="text-xs text-gray-600">Active</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-4xl font-bold text-indigo-600">
-                  {loading ? <Skeleton className="h-8 w-12" /> : stats.active}
+            <Card className="border-0 shadow-lg rounded-2xl py-0" style={{ backgroundColor: '#fddcc0' }}>
+              <CardContent className="flex items-center gap-3 py-4 px-4">
+                <Trophy className="h-9 w-9 text-indigo-600 shrink-0" strokeWidth={1.5} />
+                <div className="flex flex-col">
+                  <span className="text-xs font-medium text-gray-600">Active</span>
+                  <span className="text-2xl font-bold text-indigo-600">
+                    {loading ? <Skeleton className="h-7 w-8" /> : stats.active}
+                  </span>
                 </div>
               </CardContent>
             </Card>
 
             {/* Completed Tournaments */}
-            <Card className="bg-white backdrop-blur border-0 shadow-lg">
-              <CardHeader className="pb-2">
-                <CheckCircle2 className="h-6 w-6 text-green-600 mb-1" />
-                <CardTitle className="text-xs text-gray-600">Done</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-4xl font-bold text-green-600">
-                  {loading ? <Skeleton className="h-8 w-12" /> : stats.completed}
+            <Card className="border-0 shadow-lg rounded-2xl py-0" style={{ backgroundColor: '#fddcc0' }}>
+              <CardContent className="flex items-center gap-3 py-4 px-4">
+                <CheckCircle2 className="h-9 w-9 text-green-600 shrink-0" strokeWidth={1.5} />
+                <div className="flex flex-col">
+                  <span className="text-xs font-medium text-gray-600">Finished</span>
+                  <span className="text-2xl font-bold text-green-600">
+                    {loading ? <Skeleton className="h-7 w-8" /> : stats.completed}
+                  </span>
                 </div>
               </CardContent>
             </Card>
 
             {/* Total Tournaments */}
-            <Card className="bg-white backdrop-blur border-0 shadow-lg">
-              <CardHeader className="pb-2">
-                <Target className="h-6 w-6 text-purple-600 mb-1" />
-                <CardTitle className="text-xs text-gray-600">Total</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-4xl font-bold text-purple-600">
-                  {loading ? <Skeleton className="h-8 w-12" /> : stats.total}
+            <Card className="border-0 shadow-lg rounded-2xl py-0" style={{ backgroundColor: '#fddcc0' }}>
+              <CardContent className="flex items-center gap-3 py-4 px-4">
+                <Target className="h-9 w-9 text-purple-600 shrink-0" strokeWidth={1.5} />
+                <div className="flex flex-col">
+                  <span className="text-xs font-medium text-gray-600">Total</span>
+                  <span className="text-2xl font-bold text-purple-600">
+                    {loading ? <Skeleton className="h-7 w-8" /> : stats.total}
+                  </span>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Quick Stats */}
-            <Card className="bg-white backdrop-blur border-0 shadow-lg">
-              <CardHeader className="pb-2">
-                <Users className="h-6 w-6 text-orange-600 mb-1" />
-                <CardTitle className="text-xs text-gray-600">Players</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-4xl font-bold text-orange-600">
-                  {loading ? <Skeleton className="h-8 w-12" /> : tournaments.reduce((acc, t) => acc + t._count.participants, 0)}
+            {/* Players */}
+            <Card className="border-0 shadow-lg rounded-2xl py-0" style={{ backgroundColor: '#fddcc0' }}>
+              <CardContent className="flex items-center gap-3 py-4 px-4">
+                <Users className="h-9 w-9 text-orange-600 shrink-0" strokeWidth={1.5} />
+                <div className="flex flex-col">
+                  <span className="text-xs font-medium text-gray-600">Players</span>
+                  <span className="text-2xl font-bold text-orange-600">
+                    {loading ? <Skeleton className="h-7 w-8" /> : totalPlayers}
+                  </span>
                 </div>
               </CardContent>
             </Card>
           </div>
         </div>
+        </div>
 
         {/* Tournaments List - Mobile */}
-        <div className="bg-white rounded-t-3xl pt-6 px-4 pb-24 min-h-[50vh]">
+        <div className="bg-white rounded-t-3xl -mt-4 pt-6 px-4 pb-24 relative z-10">
           <Card className="border-0 shadow-none bg-transparent">
             <CardHeader className="px-0">
               <div>
@@ -198,43 +234,8 @@ export default function DashboardPage() {
                   </Link>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {tournaments.map((tournament) => (
-                    <Link
-                      key={tournament.id}
-                      href={`/tournaments/${tournament.id}`}
-                      className="block p-4 border rounded-lg hover:shadow-md transition-shadow bg-white"
-                      style={{ borderColor: '#da6c6c20' }}
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="text-lg font-semibold text-gray-900">
-                              {tournament.name}
-                            </h3>
-                            {getStatusBadge(tournament.status)}
-                          </div>
-                          <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                            <span className="flex items-center gap-1">
-                              <Target className="h-4 w-4" />
-                              {tournament.type}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Users className="h-4 w-4" />
-                              {tournament._count.participants} players
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Trophy className="h-4 w-4" />
-                              {tournament._count.matches} matches
-                            </span>
-                          </div>
-                        </div>
-                        <Button variant="outline" size="sm">
-                          View Details
-                        </Button>
-                      </div>
-                    </Link>
-                  ))}
+                <div className="space-y-3">
+                  {tournaments.map((tournament) => renderTournamentCard(tournament))}
                 </div>
               )}
             </CardContent>
@@ -331,43 +332,8 @@ export default function DashboardPage() {
               </Link>
             </div>
           ) : (
-            <div className="space-y-4">
-              {tournaments.map((tournament) => (
-                <Link
-                  key={tournament.id}
-                  href={`/tournaments/${tournament.id}`}
-                  className="block p-4 border rounded-lg hover:shadow-md transition-shadow"
-                  style={{ borderColor: '#da6c6c20' }}
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {tournament.name}
-                        </h3>
-                        {getStatusBadge(tournament.status)}
-                      </div>
-                      <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                        <span className="flex items-center gap-1">
-                          <Target className="h-4 w-4" />
-                          {tournament.type}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Users className="h-4 w-4" />
-                          {tournament._count.participants} players
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Trophy className="h-4 w-4" />
-                          {tournament._count.matches} matches
-                        </span>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm">
-                      View Details
-                    </Button>
-                  </div>
-                </Link>
-              ))}
+            <div className="space-y-3">
+              {tournaments.map((tournament) => renderTournamentCard(tournament))}
             </div>
           )}
           </CardContent>
