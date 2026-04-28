@@ -26,6 +26,7 @@ import { ArrowLeft, Info, AlertTriangle, Save, ScrollText } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { useTournament, useActivityLogs, invalidateTournament, invalidateTournaments } from "@/lib/swr";
 
 interface Participant {
   id: string;
@@ -63,63 +64,25 @@ export default function SettingsPage() {
   const { data: session } = useSession();
   const id = params.id as string;
   
-  const [tournament, setTournament] = useState<Tournament | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { tournament, role, isLoading: loading, mutate } = useTournament(id);
+  const { logs: activityLogs, isLoading: loadingLogs } = useActivityLogs(id, role === "organizer");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [role, setRole] = useState<string | null>(null);
   const [updatingOwner, setUpdatingOwner] = useState<string | null>(null);
-  const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
-  const [loadingLogs, setLoadingLogs] = useState(false);
   
   // Form state
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [maxParticipants, setMaxParticipants] = useState(8);
 
+  // Initialize form when tournament data loads
   useEffect(() => {
-    const fetchTournament = async () => {
-      try {
-        const response = await fetch(`/api/tournaments/${id}`);
-        if (!response.ok) throw new Error("Failed to fetch tournament");
-        const data = await response.json();
-        const tournamentData = data.tournament || data;
-        setTournament(tournamentData);
-        setRole(data.role || null);
-        setName(tournamentData.name);
-        setDescription(tournamentData.description || "");
-        setMaxParticipants(tournamentData.maxParticipants);
-      } catch (error) {
-        console.error("Error fetching tournament:", error);
-        toast.error("Failed to load tournament settings");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (id) {
-      fetchTournament();
+    if (tournament) {
+      setName(tournament.name);
+      setDescription(tournament.description || "");
+      setMaxParticipants(tournament.maxParticipants);
     }
-  }, [id]);
-
-  useEffect(() => {
-    if (!id || role !== "organizer") return;
-    const fetchLogs = async () => {
-      setLoadingLogs(true);
-      try {
-        const res = await fetch(`/api/tournaments/${id}/activity?limit=20`);
-        if (res.ok) {
-          const data = await res.json();
-          setActivityLogs(data.logs);
-        }
-      } catch {
-        // silent fail
-      } finally {
-        setLoadingLogs(false);
-      }
-    };
-    fetchLogs();
-  }, [id, role]);
+  }, [tournament]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,6 +102,8 @@ export default function SettingsPage() {
       if (!response.ok) throw new Error("Failed to update tournament");
 
       toast.success("Tournament updated successfully");
+      invalidateTournament(id);
+      invalidateTournaments();
       router.push(`/tournaments/${id}`);
     } catch (error) {
       console.error("Error updating tournament:", error);
@@ -159,6 +124,7 @@ export default function SettingsPage() {
       if (!response.ok) throw new Error("Failed to delete tournament");
 
       toast.success("Tournament deleted successfully");
+      invalidateTournaments();
       router.push("/dashboard");
     } catch (error) {
       console.error("Error deleting tournament:", error);
@@ -269,10 +235,10 @@ export default function SettingsPage() {
               <CardContent>
                 <div className="space-y-3">
                   {tournament.participants
-                    .filter((participant) => participant.userId !== session?.user?.id)
-                    .map((participant) => {
+                    .filter((participant: any) => participant.userId !== session?.user?.id)
+                    .map((participant: any) => {
                     const ownerEntry = tournament.owners.find(
-                      (owner) => owner.userId === participant.userId
+                      (owner: any) => owner.userId === participant.userId
                     );
                     const isManager = ownerEntry?.role === "MANAGER";
                     const isCreator = tournament.createdBy === participant.userId;
@@ -321,7 +287,7 @@ export default function SettingsPage() {
                               }
 
                               const data = await response.json();
-                              setTournament(data.tournament);
+                              mutate();
                               toast.success(
                                 isManager
                                   ? "Manager privilege revoked"

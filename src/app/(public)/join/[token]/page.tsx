@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Trophy, Users, AlertCircle, Loader2 } from "lucide-react";
+import { useInviteToken, invalidateTournament, invalidateTournaments } from "@/lib/swr";
 
 interface JoinTournamentPageProps {
   params: Promise<{
@@ -17,54 +18,25 @@ interface JoinTournamentPageProps {
   }>;
 }
 
-interface TournamentData {
-  id: string;
-  name: string;
-  type: string;
-  status: string;
-  maxParticipants: number | null;
-  participantCount: number;
-  joinExpiry: string | null;
-}
-
 export default function JoinTournamentPage({ params }: JoinTournamentPageProps) {
   const [token, setToken] = useState<string>("");
-  const [tournament, setTournament] = useState<TournamentData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { tournament, error: fetchError, isLoading } = useInviteToken(token || undefined);
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const { data: session, status } = useSession();
   const router = useRouter();
   const isSignedIn = status === "authenticated";
+  const loading = isLoading || status === "loading";
 
   useEffect(() => {
     params.then((p) => setToken(p.token));
   }, [params]);
 
   useEffect(() => {
-    if (!token) return;
-
-    // Fetch tournament details using the token
-    const fetchTournament = async () => {
-      try {
-        const res = await fetch(`/api/invites/${token}`);
-        const data = await res.json();
-
-        if (!res.ok) {
-          setError(data.error || "Failed to load tournament");
-          return;
-        }
-
-        setTournament(data.tournament);
-      } catch (err) {
-        setError("Failed to load tournament details");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTournament();
-  }, [token]);
+    if (fetchError) {
+      setError((fetchError as any).info?.error || "Failed to load tournament details");
+    }
+  }, [fetchError]);
 
   const handleJoin = async () => {
     if (!isSignedIn) {
@@ -90,6 +62,9 @@ export default function JoinTournamentPage({ params }: JoinTournamentPageProps) 
         setError(data.error || "Failed to join tournament");
         return;
       }
+
+      invalidateTournament(tournament.id);
+      invalidateTournaments();
 
       // Redirect to tournament page
       router.push(`/tournaments/${tournament.id}`);
@@ -200,7 +175,7 @@ export default function JoinTournamentPage({ params }: JoinTournamentPageProps) 
             <div className="space-y-3">
               <Button
                 onClick={handleJoin}
-                disabled={joining || tournament.status !== "OPEN"}
+                disabled={joining || (tournament.status !== "OPEN" && tournament.status !== "ONGOING")}
                 className="w-full"
                 size="lg"
               >

@@ -45,12 +45,16 @@ export async function POST(
       );
     }
 
-    if (tournament.status !== "OPEN") {
+    if (tournament.status !== "OPEN" && tournament.status !== "ONGOING") {
       return NextResponse.json(
-        { error: "Can only generate invites for tournaments that are open" },
+        { error: "Can only generate invites for tournaments that are open or ongoing" },
         { status: 400 }
       );
     }
+
+    // For ONGOING tournaments, force single-use invites
+    const isOngoing = tournament.status === "ONGOING";
+    const effectiveMaxUses = isOngoing ? 1 : (maxUses || null);
 
     // Generate new invitation token
     const token = randomBytes(32).toString("hex");
@@ -63,12 +67,15 @@ export async function POST(
         tournamentId,
         token,
         expiresAt,
-        maxUses: maxUses || null,
+        maxUses: effectiveMaxUses,
       },
     });
 
     await logActivity(tournamentId, userId, "INVITE_GENERATED", {
       inviteId: invite.id,
+      tournamentStatus: tournament.status,
+      maxUses: effectiveMaxUses,
+      singleUse: isOngoing,
     });
 
     return NextResponse.json({

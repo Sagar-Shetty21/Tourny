@@ -2,6 +2,8 @@ import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserRole, logActivity } from "@/lib/tournament-utils";
+import { writeTournamentEvent } from "@/lib/firebase-events";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 // GET /api/tournaments/[id]/finish - Get finish vote status
 export async function GET(
@@ -128,6 +130,50 @@ export async function POST(
         method: "organizer_instant",
       });
 
+      // Compute top 3 standings for the chat event
+      const finishedMatches = await prisma.match.findMany({
+        where: { tournamentId, status: "FINISHED" },
+        include: {
+          player1: { select: { id: true, name: true, username: true } },
+          player2: { select: { id: true, name: true, username: true } },
+          player3: { select: { id: true, name: true, username: true } },
+          player4: { select: { id: true, name: true, username: true } },
+        },
+      });
+      const standingsMap = new Map<string, { name: string; points: number }>();
+      for (const m of finishedMatches) {
+        if (!m.result || !(m.result as any).winner) continue;
+        const isD = !!(m.player3 && m.player4);
+        const t1 = isD ? [m.player1, m.player2].filter(Boolean) : [m.player1].filter(Boolean);
+        const t2 = isD ? [m.player3, m.player4].filter(Boolean) : [m.player2].filter(Boolean);
+        for (const p of [...t1, ...t2]) {
+          if (p && !standingsMap.has(p.id)) standingsMap.set(p.id, { name: p.name || p.username || "?", points: 0 });
+        }
+        const winner = (m.result as any).winner;
+        if (winner === "draw") {
+          for (const p of [...t1, ...t2]) { if (p) standingsMap.get(p.id)!.points += 1; }
+        } else if (winner === "team1") {
+          for (const p of t1) { if (p) standingsMap.get(p.id)!.points += 3; }
+        } else {
+          for (const p of t2) { if (p) standingsMap.get(p.id)!.points += 3; }
+        }
+      }
+      const top3 = Array.from(standingsMap.values()).sort((a, b) => b.points - a.points).slice(0, 3);
+      await writeTournamentEvent(tournamentId, "tournament_finished", { top3 });
+
+      // Push to all participants
+      const participants = await prisma.participant.findMany({
+        where: { tournamentId, removedAt: null },
+        select: { userId: true },
+      });
+      const winnerName = top3[0]?.name || "N/A";
+      sendPushToUsers(
+        participants.map((p) => p.userId),
+        "Tournament Complete!",
+        `${tournament.name} has ended. Winner: ${winnerName}`,
+        `/tournaments/${tournamentId}`
+      ).catch(() => {});
+
       return NextResponse.json({
         success: true,
         finished: true,
@@ -178,6 +224,50 @@ export async function POST(
         method: "manager_votes",
         totalVotes: voteCount,
       });
+
+      // Compute top 3 standings for the chat event
+      const finishedMatchesMgr = await prisma.match.findMany({
+        where: { tournamentId, status: "FINISHED" },
+        include: {
+          player1: { select: { id: true, name: true, username: true } },
+          player2: { select: { id: true, name: true, username: true } },
+          player3: { select: { id: true, name: true, username: true } },
+          player4: { select: { id: true, name: true, username: true } },
+        },
+      });
+      const standingsMapMgr = new Map<string, { name: string; points: number }>();
+      for (const m of finishedMatchesMgr) {
+        if (!m.result || !(m.result as any).winner) continue;
+        const isD = !!(m.player3 && m.player4);
+        const t1 = isD ? [m.player1, m.player2].filter(Boolean) : [m.player1].filter(Boolean);
+        const t2 = isD ? [m.player3, m.player4].filter(Boolean) : [m.player2].filter(Boolean);
+        for (const p of [...t1, ...t2]) {
+          if (p && !standingsMapMgr.has(p.id)) standingsMapMgr.set(p.id, { name: p.name || p.username || "?", points: 0 });
+        }
+        const winner = (m.result as any).winner;
+        if (winner === "draw") {
+          for (const p of [...t1, ...t2]) { if (p) standingsMapMgr.get(p.id)!.points += 1; }
+        } else if (winner === "team1") {
+          for (const p of t1) { if (p) standingsMapMgr.get(p.id)!.points += 3; }
+        } else {
+          for (const p of t2) { if (p) standingsMapMgr.get(p.id)!.points += 3; }
+        }
+      }
+      const top3Mgr = Array.from(standingsMapMgr.values()).sort((a, b) => b.points - a.points).slice(0, 3);
+      await writeTournamentEvent(tournamentId, "tournament_finished", { top3: top3Mgr });
+
+      // Push to all participants
+      const mgrParticipants = await prisma.participant.findMany({
+        where: { tournamentId, removedAt: null },
+        select: { userId: true },
+      });
+      const mgrWinnerName = top3Mgr[0]?.name || "N/A";
+      sendPushToUsers(
+        mgrParticipants.map((p) => p.userId),
+        "Tournament Complete!",
+        `${tournament.name} has ended. Winner: ${mgrWinnerName}`,
+        `/tournaments/${tournamentId}`
+      ).catch(() => {});
 
       return NextResponse.json({
         success: true,

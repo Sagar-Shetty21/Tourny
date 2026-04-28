@@ -15,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, Info, Trophy, Target, Layers, Loader2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { invalidateTournaments } from "@/lib/swr";
 
 export default function CreateTournamentPage() {
   const router = useRouter();
@@ -64,6 +65,8 @@ export default function CreateTournamentPage() {
         description: "Redirecting to tournament page...",
         icon: <CheckCircle2 className="h-4 w-4" />,
       });
+
+      invalidateTournaments();
 
       // Redirect to the tournament page
       setTimeout(() => {

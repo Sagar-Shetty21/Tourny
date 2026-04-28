@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/tournament-utils";
+import { writeTournamentEvent } from "@/lib/firebase-events";
 
 // POST /api/tournaments/[id]/join - Join a tournament
 export async function POST(
@@ -74,18 +75,29 @@ export async function POST(
 
     const tournament = invite.tournament;
 
-    // Check tournament status
-    if (tournament.status !== "OPEN") {
+    // For ONGOING tournaments, enforce single-use regardless of invite's maxUses
+    if (tournament.status === "ONGOING" && invite.usedCount >= 1) {
+      return NextResponse.json(
+        { error: "This invitation link has already been used. During an ongoing tournament, each invite link can only be used once." },
+        { status: 400 }
+      );
+    }
+
+    // Check tournament status - allow OPEN and ONGOING
+    if (tournament.status !== "OPEN" && tournament.status !== "ONGOING") {
       return NextResponse.json(
         { error: "Tournament is not accepting new participants" },
         { status: 400 }
       );
     }
 
-    // Check if tournament is full
+    // Check if tournament is full (only count active participants)
+    const activeParticipants = tournament.participants.filter(
+      (p) => p.removedAt === null
+    );
     if (
       tournament.maxParticipants &&
-      tournament.participants.length >= tournament.maxParticipants
+      activeParticipants.length >= tournament.maxParticipants
     ) {
       return NextResponse.json(
         { error: "Tournament is full" },
@@ -93,40 +105,69 @@ export async function POST(
       );
     }
 
-    // Check if user is already a participant
+    // Check if user is already an active participant
     const existingParticipant = tournament.participants.find(
       (p) => p.userId === userId
     );
 
-    if (existingParticipant) {
+    if (existingParticipant && existingParticipant.removedAt === null) {
       return NextResponse.json(
         { error: "You are already a participant" },
         { status: 400 }
       );
     }
 
-    // Add user as participant and increment invite usage
-    const [participant] = await prisma.$transaction([
-      prisma.participant.create({
-        data: {
-          tournamentId,
-          userId,
-        },
-      }),
-      prisma.invite.update({
-        where: { id: invite.id },
-        data: {
-          usedCount: { increment: 1 },
-        },
-      }),
-    ]);
+    const isRejoining = existingParticipant && existingParticipant.removedAt !== null;
 
-    await logActivity(tournamentId, userId, "PLAYER_JOINED");
+    // Add user as participant (or re-add if previously removed) and increment invite usage
+    if (isRejoining) {
+      await prisma.$transaction([
+        prisma.participant.update({
+          where: { id: existingParticipant.id },
+          data: { removedAt: null },
+        }),
+        prisma.invite.update({
+          where: { id: invite.id },
+          data: { usedCount: { increment: 1 } },
+        }),
+      ]);
+    } else {
+      await prisma.$transaction([
+        prisma.participant.create({
+          data: {
+            tournamentId,
+            userId,
+          },
+        }),
+        prisma.invite.update({
+          where: { id: invite.id },
+          data: { usedCount: { increment: 1 } },
+        }),
+      ]);
+    }
+
+    // Get the user's name for logging
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, username: true, email: true },
+    });
+
+    await logActivity(tournamentId, userId, "PLAYER_JOINED", {
+      userId,
+      playerName: user?.name || user?.username || "Unknown",
+      tournamentStatus: tournament.status,
+      inviteId: invite.id,
+      rejoined: !!isRejoining,
+    });
+
+    await writeTournamentEvent(tournamentId, "player_joined", {
+      playerName: user?.name || user?.username || "Unknown",
+      rejoined: !!isRejoining,
+    });
 
     return NextResponse.json({
       success: true,
-      participation: participant,
-      message: "Successfully joined tournament",
+      message: isRejoining ? "Successfully re-joined tournament" : "Successfully joined tournament",
     });
   } catch (error) {
     console.error("Error joining tournament:", error);

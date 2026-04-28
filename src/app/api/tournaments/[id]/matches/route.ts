@@ -54,9 +54,10 @@ export async function GET(
         tournamentId,
         ...(status && { status: status.toUpperCase() as any }),
       },
-      orderBy: {
-        createdAt: "asc",
-      },
+      orderBy: [
+        { createdAt: "asc" },
+        { id: "asc" },
+      ],
     });
 
     // Fetch user details for all players in the matches

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -20,7 +21,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Copy, RefreshCw, Info, Share2, CheckCircle2, ExternalLink, Trash2, Trophy, Users, Gamepad2, UserPlus } from "lucide-react";
+import { ArrowLeft, Copy, RefreshCw, Info, Share2, CheckCircle2, ExternalLink, Trash2, Trophy, Users, Gamepad2, UserPlus, MessageCircle } from "lucide-react";
+import { useTournament } from "@/lib/swr";
 
 interface Invite {
   id: string;
@@ -36,35 +38,17 @@ export default function InvitePage() {
   const params = useParams();
   const id = params.id as string;
   
-  const [invites, setInvites] = useState<Invite[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { tournament: tournamentData, isLoading: loading, mutate } = useTournament(id);
+  const tournamentStatus = tournamentData?.status || "OPEN";
+  const invites: Invite[] = useMemo(() => {
+    if (!tournamentData?.invites) return [];
+    return tournamentData.invites.map((invite: Invite) => ({
+      ...invite,
+      link: invite.link || (typeof window !== "undefined" ? `${window.location.origin}/join/${invite.token}` : `/join/${invite.token}`),
+    }));
+  }, [tournamentData]);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [tournamentStatus, setTournamentStatus] = useState<string>("OPEN");
-
-  useEffect(() => {
-    fetchInvites();
-  }, [id]);
-
-  const fetchInvites = async () => {
-    try {
-      const res = await fetch(`/api/tournaments/${id}`);
-      const data = await res.json();
-
-      if (res.ok) {
-        setTournamentStatus(data.tournament.status || "OPEN");
-        const invitesWithLinks = (data.tournament.invites || []).map((invite: Invite) => ({
-          ...invite,
-          link: invite.link || `${window.location.origin}/join/${invite.token}`,
-        }));
-        setInvites(invitesWithLinks);
-      }
-    } catch (err) {
-      console.error("Failed to fetch invites:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const generateNewInvite = async () => {
     setGenerating(true);
@@ -84,7 +68,7 @@ export default function InvitePage() {
         toast.success("Invite link generated!", {
           description: "New invitation link is ready to share",
         });
-        setInvites([data.invitation, ...invites]);
+        mutate();
       } else {
         toast.error("Failed to generate invite", {
           description: data.error,
@@ -144,7 +128,7 @@ export default function InvitePage() {
         toast.success("Invite deleted", {
           description: "The invitation link has been removed",
         });
-        setInvites(invites.filter(inv => inv.id !== inviteId));
+        mutate();
       } else {
         const data = await res.json();
         toast.error("Failed to delete invite", {
@@ -188,6 +172,12 @@ export default function InvitePage() {
               <span className="hidden sm:inline">Matches</span>
             </Button>
           </Link>
+          <Link href={`/tournaments/${id}/chat`} className="hidden md:block">
+            <Button variant="outline">
+              <MessageCircle className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Chat</span>
+            </Button>
+          </Link>
           {tournamentStatus !== "FINISHED" && (
             <Link href={`/tournaments/${id}/invite`}>
               <Button variant="outline" className="text-white" style={{ backgroundColor: '#da6c6c' }}>
@@ -205,13 +195,15 @@ export default function InvitePage() {
           <CardHeader>
             <CardTitle>Generate Invitation Link</CardTitle>
             <CardDescription>
-              {tournamentStatus !== "OPEN"
-                ? "Invitations are only available when the tournament is open"
+              {tournamentStatus === "FINISHED"
+                ? "Invitations are not available for finished tournaments"
+                : tournamentStatus === "ONGOING"
+                ? "Invites during an ongoing tournament are single-use (one player per link)"
                 : "Create a new link to invite players to your tournament"}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={generateNewInvite} disabled={generating || loading || tournamentStatus !== "OPEN"} className="w-full sm:w-auto">
+            <Button onClick={generateNewInvite} disabled={generating || loading || tournamentStatus === "FINISHED"} className="w-full sm:w-auto">
               {generating ? (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -256,6 +248,9 @@ export default function InvitePage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-sm font-medium text-gray-900">Invitation Link</p>
+                        {invite.maxUses === 1 && (
+                          <Badge variant="secondary" className="text-xs">Single-use</Badge>
+                        )}
                         {invite.maxUses && (
                           <span className="text-xs text-gray-500">
                             {invite.usedCount} / {invite.maxUses} uses

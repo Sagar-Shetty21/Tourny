@@ -33,7 +33,7 @@ export async function GET(
           },
         },
         matches: {
-          orderBy: { createdAt: "asc" },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           include: {
             player1: { select: { id: true, name: true, username: true } },
             player2: { select: { id: true, name: true, username: true } },

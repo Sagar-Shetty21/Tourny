@@ -1,11 +1,20 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useSession } from "next-auth/react";
+import {
+  collection,
+  addDoc,
+  onSnapshot,
+  serverTimestamp,
+  Timestamp,
+} from "firebase/firestore";
+import { getDb } from "@/lib/firebase";
+import { useFirebase } from "@/components/FirebaseProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -37,8 +46,18 @@ import {
   Minus,
   BarChart3,
   Loader2,
+  MessageCircle,
+  Filter,
+  X,
+  Swords,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTournament, useTournamentMatches, invalidateTournament, invalidateMatches } from "@/lib/swr";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface Player {
   id: string;
@@ -191,13 +210,17 @@ function getRankBadge(rank: number) {
 export default function MatchesPage() {
   const params = useParams();
   const id = params?.id as string;
+  const { data: session } = useSession();
+  const userId = (session?.user as any)?.id;
+  const userName = (session?.user as any)?.username || session?.user?.name || "Anonymous";
+  const { isFirebaseReady } = useFirebase();
 
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { tournament: tournamentData, role, isLoading: loadingTournament } = useTournament(id);
+  const { matches, isLoading: loadingMatches, mutate: mutateMatches } = useTournamentMatches(id);
+  const loading = loadingTournament || loadingMatches;
+  const tournamentType = tournamentData?.type ?? "SINGLES";
+  const tournamentStatus = tournamentData?.status ?? "OPEN";
   const [filter, setFilter] = useState<string>("all");
-  const [role, setRole] = useState<string | null>(null);
-  const [tournamentType, setTournamentType] = useState<string>("SINGLES");
-  const [tournamentStatus, setTournamentStatus] = useState<string>("OPEN");
   const [resetting, setResetting] = useState<string | null>(null);
 
   // Result dialog state
@@ -205,41 +228,102 @@ export default function MatchesPage() {
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!id) return;
+  // Player filter state
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
+  const [invitingMatch, setInvitingMatch] = useState<string | null>(null);
 
-    const fetchData = async () => {
-      try {
-        const [matchesRes, tournamentRes] = await Promise.all([
-          fetch(`/api/tournaments/${id}/matches`),
-          fetch(`/api/tournaments/${id}`),
-        ]);
-        const matchesData = await matchesRes.json();
-        const tournamentData = await tournamentRes.json();
-
-        if (matchesRes.ok) setMatches(matchesData.matches);
-        if (tournamentRes.ok) {
-          setRole(tournamentData.role || null);
-          setTournamentType(tournamentData.tournament.type);
-          setTournamentStatus(tournamentData.tournament.status);
-        }
-      } catch (err) {
-        console.error("Failed to fetch data:", err);
-      } finally {
-        setLoading(false);
+  // Get unique active players from tournament participants
+  const activePlayers = useMemo(() => {
+    if (!tournamentData?.participants) return [];
+    const playerIds = new Set<string>();
+    const players: { id: string; name: string }[] = [];
+    for (const p of tournamentData.participants) {
+      if (p.removedAt) continue;
+      const uid = p.userId || p.user?.id;
+      const name = p.user?.name || p.user?.username || "Unknown";
+      if (uid && !playerIds.has(uid)) {
+        playerIds.add(uid);
+        players.push({ id: uid, name });
       }
-    };
+    }
+    return players;
+  }, [tournamentData]);
 
-    fetchData();
-  }, [id]);
+  // Availability from Firestore
+  const [availablePlayerIds, setAvailablePlayerIds] = useState<Set<string>>(new Set());
+  const [showAvailableOnly, setShowAvailableOnly] = useState(false);
+
+  useEffect(() => {
+    if (!id || !isFirebaseReady) return;
+    const availRef = collection(getDb(), "tournaments", id, "availability");
+    const unsub = onSnapshot(availRef, (snapshot) => {
+      const now = new Date();
+      const ids = new Set<string>();
+      snapshot.docs.forEach((d) => {
+        const data = d.data();
+        if (!data.available) return;
+        if (data.expiresAt && (data.expiresAt as Timestamp).toDate() < now) return;
+        ids.add(d.id);
+      });
+      setAvailablePlayerIds(ids);
+    });
+    return () => unsub();
+  }, [id, isFirebaseReady]);
+
+  // Filter logic
+  const isDoublesType = tournamentType === "DOUBLES";
+  const fullTeamSize = isDoublesType ? 4 : 2;
+  const filterMode = selectedPlayerIds.length === 0
+    ? "none"
+    : selectedPlayerIds.length >= fullTeamSize
+    ? "full"
+    : "semi";
+
+  const displayPlayers = useMemo(() => {
+    if (!showAvailableOnly) return activePlayers;
+    return activePlayers.filter((p) => availablePlayerIds.has(p.id));
+  }, [activePlayers, showAvailableOnly, availablePlayerIds]);
+
+  const togglePlayer = (playerId: string) => {
+    setSelectedPlayerIds((prev) =>
+      prev.includes(playerId) ? prev.filter((id) => id !== playerId) : [...prev, playerId]
+    );
+  };
 
   const filteredMatches = useMemo(() => {
-    if (filter === "pending") return matches.filter((m) => m.status === "PENDING");
-    if (filter === "finished") return matches.filter((m) => m.status === "FINISHED");
-    return matches;
-  }, [filter, matches]);
+    let result = matches;
 
-  const standings = useMemo(() => computeStandings(matches), [matches]);
+    // Apply status filter
+    if (filter === "pending") result = result.filter((m) => m.status === "PENDING");
+    else if (filter === "finished") result = result.filter((m) => m.status === "FINISHED");
+    else if (filter === "stale") result = result.filter((m) => m.status === "STALE");
+    else if (filter === "my") result = result.filter((m) =>
+      m.player1Id === userId || m.player2Id === userId || m.player3Id === userId || m.player4Id === userId
+    );
+
+    // Apply player filter
+    if (selectedPlayerIds.length > 0 && filter !== "standings") {
+      if (filterMode === "semi") {
+        // Semi-match: show matches where ANY selected player is involved
+        result = result.filter((m) =>
+          selectedPlayerIds.some((pid) =>
+            m.player1Id === pid || m.player2Id === pid || m.player3Id === pid || m.player4Id === pid
+          )
+        );
+      } else if (filterMode === "full") {
+        // Full-match: show matches where EXACTLY those players play
+        const selectedSet = new Set(selectedPlayerIds.slice(0, fullTeamSize));
+        result = result.filter((m) => {
+          const matchPlayerIds = [m.player1Id, m.player2Id, m.player3Id, m.player4Id].filter(Boolean) as string[];
+          return matchPlayerIds.length === selectedSet.size && matchPlayerIds.every((pid) => selectedSet.has(pid));
+        });
+      }
+    }
+
+    return result;
+  }, [filter, matches, selectedPlayerIds, filterMode, fullTeamSize, userId]);
+
+  const standings = useMemo(() => computeStandings(matches.filter((m) => m.status !== "STALE")), [matches]);
 
   const canManage = role === "organizer" || role === "manager";
   const isOrganizer = role === "organizer";
@@ -255,9 +339,8 @@ export default function MatchesPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setMatches((prev) =>
-          prev.map((m) => (m.id === selectedMatch.id ? { ...m, status: "FINISHED", result: { winner } } : m))
-        );
+        mutateMatches();
+        invalidateTournament(id);
         toast.success("Result submitted successfully");
         if (data.allMatchesComplete) {
           toast.info("All matches completed! You can now finish the tournament from the Overview page.");
@@ -282,9 +365,8 @@ export default function MatchesPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setMatches((prev) =>
-          prev.map((m) => (m.id === matchId ? { ...m, status: "PENDING", result: null } : m))
-        );
+        mutateMatches();
+        invalidateTournament(id);
         toast.success("Match result has been reset");
       } else {
         toast.error(data.error || "Failed to reset match");
@@ -299,6 +381,52 @@ export default function MatchesPage() {
   const isDoubles = tournamentType === "DOUBLES";
   const team1Label = isDoubles ? "Team 1" : "Player 1";
   const team2Label = isDoubles ? "Team 2" : "Player 2";
+
+  const handleInviteToPlay = async (match: Match) => {
+    if (!userId || !id || !isFirebaseReady) return;
+    setInvitingMatch(match.id);
+    try {
+      const matchNumber = matches.indexOf(match) + 1;
+      const playerIds = [match.player1Id, match.player2Id, match.player3Id, match.player4Id].filter(Boolean) as string[];
+      const playerNames: Record<string, string> = {};
+      if (match.player1) playerNames[match.player1.id] = match.player1.name;
+      if (match.player2) playerNames[match.player2.id] = match.player2.name;
+      if (match.player3) playerNames[match.player3.id] = match.player3.name;
+      if (match.player4) playerNames[match.player4.id] = match.player4.name;
+
+      // Create match invite in Firestore
+      const inviteRef = await addDoc(collection(getDb(), "tournaments", id, "matchInvites"), {
+        matchId: match.id,
+        matchNumber,
+        inviterId: userId,
+        inviterName: userName,
+        playerIds,
+        playerNames,
+        votes: { [userId]: "yes" },
+        status: "pending",
+        createdAt: serverTimestamp(),
+      });
+
+      // Write system event to chat via server (admin SDK bypasses Firestore rules)
+      await fetch(`/api/tournaments/${id}/matches/invite-event`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          matchInviteId: inviteRef.id,
+          matchNumber,
+          inviterName: userName,
+          playerIds,
+        }),
+      });
+
+      toast.success("Match invite sent to chat!");
+    } catch (error) {
+      console.error("Failed to send match invite:", error);
+      toast.error("Failed to send invite");
+    } finally {
+      setInvitingMatch(null);
+    }
+  };
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -329,9 +457,24 @@ export default function MatchesPage() {
             </Button>
           </Link>
           <Link href={`/tournaments/${id}/matches`}>
-            <Button size="sm" className="bg-gray-900 text-white hover:bg-gray-800">
+            <Button size="sm" className={filter !== "standings" ? "bg-gray-900 text-white hover:bg-gray-800" : ""}  variant={filter !== "standings" ? "default" : "outline"}>
               <Gamepad2 className="h-4 w-4 sm:mr-1.5" />
               <span className="hidden sm:inline">Matches</span>
+            </Button>
+          </Link>
+          <Button
+            variant={filter === "standings" ? "default" : "outline"}
+            size="sm"
+            className={filter === "standings" ? "bg-gray-900 text-white hover:bg-gray-800" : ""}
+            onClick={() => setFilter(filter === "standings" ? "all" : "standings")}
+          >
+            <BarChart3 className="h-4 w-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">Standings</span>
+          </Button>
+          <Link href={`/tournaments/${id}/chat`} className="hidden md:block">
+            <Button variant="outline" size="sm">
+              <MessageCircle className="h-4 w-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Chat</span>
             </Button>
           </Link>
           {tournamentStatus !== "FINISHED" && (
@@ -345,24 +488,120 @@ export default function MatchesPage() {
         </div>
       </div>
 
-      {/* Tabs: Matches filters + Points Table */}
-      <Tabs value={filter} onValueChange={setFilter} className="mb-6">
-        <TabsList className="grid w-full grid-cols-4 h-10">
-          <TabsTrigger value="all" className="text-xs sm:text-sm">
-            All ({matches.length})
-          </TabsTrigger>
-          <TabsTrigger value="pending" className="text-xs sm:text-sm">
-            Pending ({matches.filter((m) => m.status === "PENDING").length})
-          </TabsTrigger>
-          <TabsTrigger value="finished" className="text-xs sm:text-sm">
-            Done ({matches.filter((m) => m.status === "FINISHED").length})
-          </TabsTrigger>
-          <TabsTrigger value="standings" className="text-xs sm:text-sm gap-1">
-            <BarChart3 className="h-3.5 w-3.5 hidden sm:block" />
-            Standings
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* Player Filter */}
+      <div className="mb-4">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="text-xs gap-1.5">
+              <Filter className="h-3.5 w-3.5" />
+              Filter by Player
+              {selectedPlayerIds.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-[10px] h-5 px-1.5">
+                  {selectedPlayerIds.length}
+                </Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-3" align="start">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-700">Select players</p>
+              {availablePlayerIds.size > 0 && (
+                <button
+                  onClick={() => setShowAvailableOnly(!showAvailableOnly)}
+                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                    showAvailableOnly
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                      : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  Available only
+                </button>
+              )}
+            </div>
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {displayPlayers.map((player) => (
+                <button
+                  key={player.id}
+                  onClick={() => togglePlayer(player.id)}
+                  className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+                    selectedPlayerIds.includes(player.id)
+                      ? "bg-gray-900 text-white"
+                      : "hover:bg-gray-100 text-gray-700"
+                  }`}
+                >
+                  <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                    selectedPlayerIds.includes(player.id) ? "bg-white text-gray-900" : avatarColor(player.id) + " text-white"
+                  }`}>
+                    {getInitials(player.name)}
+                  </div>
+                  <span className="truncate text-xs">{player.name}</span>
+                  {availablePlayerIds.has(player.id) && (
+                    <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 ml-auto shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
+            {selectedPlayerIds.length > 0 && (
+              <button
+                onClick={() => setSelectedPlayerIds([])}
+                className="w-full mt-2 text-xs text-gray-500 hover:text-gray-700 text-center py-1"
+              >
+                Clear filter
+              </button>
+            )}
+          </PopoverContent>
+        </Popover>
+        {selectedPlayerIds.length > 0 && (
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <Badge variant="secondary" className={`text-[10px] ${filterMode === "full" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+              {filterMode === "full" ? "Full-match" : "Semi-match"} · {filteredMatches.length} match{filteredMatches.length !== 1 ? "es" : ""}
+            </Badge>
+            {selectedPlayerIds.map((pid) => {
+              const player = activePlayers.find((p) => p.id === pid);
+              return (
+                <Badge key={pid} variant="outline" className="text-[10px] gap-1 pr-1">
+                  {player?.name || pid.slice(0, 6)}
+                  <button onClick={() => togglePlayer(pid)} className="ml-0.5 rounded-full hover:bg-gray-200 p-0.5">
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </Badge>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Match Filters — flex-wrap so they don't break on small screens */}
+      {filter !== "standings" && (() => {
+        const staleCount = matches.filter((m) => m.status === "STALE").length;
+        const hasStale = staleCount > 0;
+        const myCount = matches.filter((m) =>
+          m.player1Id === userId || m.player2Id === userId || m.player3Id === userId || m.player4Id === userId
+        ).length;
+        const filters = [
+          { value: "all", label: `All (${matches.length})` },
+          { value: "pending", label: `Pending (${matches.filter((m) => m.status === "PENDING").length})` },
+          { value: "finished", label: `Done (${matches.filter((m) => m.status === "FINISHED").length})` },
+          ...(hasStale ? [{ value: "stale", label: `Stale (${staleCount})` }] : []),
+          { value: "my", label: `Mine (${myCount})` },
+        ];
+        return (
+          <div className="flex flex-wrap gap-1.5 mb-6">
+            {filters.map((f) => (
+              <Button
+                key={f.value}
+                variant={filter === f.value ? "default" : "outline"}
+                size="sm"
+                className={`text-xs h-8 rounded-full ${filter === f.value ? "bg-gray-900 text-white hover:bg-gray-800" : ""}`}
+                onClick={() => setFilter(f.value)}
+              >
+                {f.value === "my" && <Swords className="h-3.5 w-3.5 mr-1" />}
+                {f.label}
+              </Button>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Content */}
       {filter === "standings" ? (
@@ -465,7 +704,9 @@ export default function MatchesPage() {
                   <div
                     key={match.id}
                     className={`group relative rounded-xl border bg-white overflow-hidden transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 ${
-                      match.status === "FINISHED"
+                      match.status === "STALE"
+                        ? "border-l-[3px] border-l-gray-300 opacity-60"
+                        : match.status === "FINISHED"
                         ? "border-l-[3px] border-l-emerald-500"
                         : "border-l-[3px] border-l-amber-400"
                     }`}
@@ -477,7 +718,11 @@ export default function MatchesPage() {
                           <span className="inline-flex items-center justify-center h-6 px-2.5 rounded-full bg-gray-100 text-[11px] font-semibold text-gray-600 uppercase tracking-wide">
                             Match {matchNumber}
                           </span>
-                          {match.status === "PENDING" ? (
+                          {match.status === "STALE" ? (
+                            <Badge variant="secondary" className="bg-gray-100 text-gray-500 border border-gray-200 text-[11px]">
+                              Stale
+                            </Badge>
+                          ) : match.status === "PENDING" ? (
                             <Badge variant="secondary" className="bg-amber-50 text-amber-700 border border-amber-200 text-[11px]">
                               <Clock className="h-3 w-3 mr-1" />
                               Pending
@@ -516,6 +761,17 @@ export default function MatchesPage() {
                               onClick={() => handleResetMatch(match.id)}
                             >
                               {resetting === match.id ? "Resetting..." : "Reset"}
+                            </Button>
+                          )}
+                          {match.status === "PENDING" && tournamentStatus === "ONGOING" && filter === "my" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs h-8 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                              disabled={invitingMatch === match.id}
+                              onClick={() => handleInviteToPlay(match)}
+                            >
+                              {invitingMatch === match.id ? "Sending..." : "Invite to Play"}
                             </Button>
                           )}
                         </div>

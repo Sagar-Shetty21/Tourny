@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +25,7 @@ import {
   BarChart3,
   Crown,
 } from "lucide-react";
+import { useTournamentPublic } from "@/lib/swr";
 
 interface Match {
   id: string;
@@ -101,37 +102,12 @@ export default function PublicTournamentPage() {
   const params = useParams();
   const id = params?.id as string;
 
-  const [tournament, setTournament] = useState<TournamentInfo | null>(null);
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { tournament, matches, participants, isLoading: loading, error: fetchError } = useTournamentPublic(id);
   const [tab, setTab] = useState("matches");
 
-  useEffect(() => {
-    if (!id) return;
-    const fetchData = async () => {
-      try {
-        const res = await fetch(`/api/tournaments/${id}/public`);
-        if (!res.ok) {
-          setError("Tournament not found");
-          return;
-        }
-        const data = await res.json();
-        setTournament(data.tournament);
-        setMatches(data.matches);
-        setParticipants(data.participants);
-      } catch {
-        setError("Failed to load tournament");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [id]);
-
-  const standings = useMemo(() => computeStandings(matches, participants), [matches, participants]);
+  const standings = useMemo(() => computeStandings(matches.filter((m: Match) => m.status !== "STALE"), participants), [matches, participants]);
   const winner = standings.length > 0 && tournament?.status === "FINISHED" ? standings[0] : null;
+  const error = fetchError ? "Failed to load tournament" : null;
 
   const getStatusBadge = (status: string) => {
     switch (status) {

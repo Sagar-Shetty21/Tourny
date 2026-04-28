@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUserRole, logActivity } from "@/lib/tournament-utils";
+import { writeTournamentEvent } from "@/lib/firebase-events";
 
 async function fetchTournamentWithUserData(id: string) {
   const tournament = await prisma.tournament.findUnique({
@@ -96,6 +97,15 @@ export async function POST(
       newRole: "MANAGER",
     });
 
+    // Get target user name for the event
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, username: true },
+    });
+    await writeTournamentEvent(id, "manager_granted", {
+      targetName: targetUser?.name || targetUser?.username || "Unknown",
+    });
+
     const updatedTournament = await fetchTournamentWithUserData(id);
 
     return NextResponse.json({ tournament: updatedTournament });
@@ -158,6 +168,15 @@ export async function DELETE(
     await logActivity(id, currentUserId, "ROLE_CHANGED", {
       targetUserId: userId,
       newRole: "REMOVED",
+    });
+
+    // Get target user name for the event
+    const removedUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, username: true },
+    });
+    await writeTournamentEvent(id, "manager_removed", {
+      targetName: removedUser?.name || removedUser?.username || "Unknown",
     });
 
     const updatedTournament = await fetchTournamentWithUserData(id);

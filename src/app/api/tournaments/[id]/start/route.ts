@@ -2,6 +2,8 @@ import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserRole, logActivity } from "@/lib/tournament-utils";
+import { writeTournamentEvent } from "@/lib/firebase-events";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 // Fisher-Yates shuffle
 function shuffle<T>(arr: T[]): T[] {
@@ -173,10 +175,22 @@ export async function POST(
       matchCount: matchData.length,
     });
 
+    await writeTournamentEvent(tournamentId, "tournament_started", {
+      matchCount: matchData.length,
+    });
+
+    // Push to all participants
+    sendPushToUsers(
+      participantIds,
+      "Tournament Started!",
+      `${tournament.name} has started with ${matchData.length} matches`,
+      `/tournaments/${tournamentId}`
+    ).catch(() => {});
+
     // Fetch created matches
     const matches = await prisma.match.findMany({
       where: { tournamentId },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
 
     // Fetch user details for all players in the matches

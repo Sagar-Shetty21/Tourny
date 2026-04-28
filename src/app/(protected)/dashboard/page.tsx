@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PlusCircle, Trophy, CheckCircle2, Clock, Users, Target, ChevronRight, Gamepad2, LayoutGrid } from "lucide-react";
+import { useTournaments } from "@/lib/swr";
 
 interface Tournament {
   id: string;
@@ -21,48 +22,19 @@ interface Tournament {
 }
 
 export default function DashboardPage() {
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    active: 0,
-    completed: 0,
-    total: 0,
-  });
+  const { tournaments, isLoading: loading } = useTournaments();
 
-  useEffect(() => {
-    const fetchTournaments = async () => {
-      try {
-        const res = await fetch("/api/tournaments");
-        const data = await res.json();
+  const stats = useMemo(() => {
+    const active = tournaments.filter((t: Tournament) =>
+      t.status === "OPEN" || t.status === "ONGOING"
+    ).length;
+    const completed = tournaments.filter((t: Tournament) =>
+      t.status === "FINISHED"
+    ).length;
+    return { active, completed, total: tournaments.length };
+  }, [tournaments]);
 
-        if (res.ok) {
-          setTournaments(data.tournaments);
-          
-          // Calculate stats
-          const active = data.tournaments.filter((t: Tournament) => 
-            t.status === "OPEN" || t.status === "ONGOING"
-          ).length;
-          const completed = data.tournaments.filter((t: Tournament) => 
-            t.status === "FINISHED"
-          ).length;
-
-          setStats({
-            active,
-            completed,
-            total: data.tournaments.length,
-          });
-        }
-      } catch (err) {
-        console.error("Failed to fetch tournaments:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTournaments();
-  }, []);
-
-  const totalPlayers = tournaments.reduce((acc, t) => acc + t._count.participants, 0);
+  const totalPlayers = tournaments.reduce((acc: number, t: Tournament) => acc + t._count.participants, 0);
 
   const getStatusBadge = (status: string) => {
     switch (status) {

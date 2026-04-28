@@ -3,6 +3,16 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
+import {
+  collection,
+  doc,
+  setDoc,
+  onSnapshot,
+  Timestamp,
+} from "firebase/firestore";
+import { getDb } from "@/lib/firebase";
+import { useFirebase } from "@/components/FirebaseProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,12 +27,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Settings,
   Users,
   Gamepad2,
   UserPlus,
+  MessageCircle,
   Play,
   Info,
   Trophy,
@@ -34,8 +46,38 @@ import {
   Flag,
   Sparkles,
   Crown,
+  RefreshCw,
+  Zap,
+  Timer,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTournament, invalidateTournament, invalidateMatches } from "@/lib/swr";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+
+interface AvailabilityDoc {
+  odcId: string;
+  available: boolean;
+  userName: string;
+  expiresAt: Timestamp | null;
+  updatedAt: Timestamp;
+}
+
+interface MatchInviteDoc {
+  id: string;
+  matchId: string;
+  matchNumber: number;
+  inviterName: string;
+  playerIds: string[];
+  playerNames: Record<string, string>;
+  votes: Record<string, string>;
+  status: string;
+  createdAt: Timestamp | null;
+}
 
 interface Match {
   id: string;
@@ -108,37 +150,114 @@ export default function TournamentPage() {
   const params = useParams();
   const router = useRouter();
   const id = params?.id as string;
+  const { data: session } = useSession();
+  const userId = (session?.user as any)?.id;
+  const userName = (session?.user as any)?.username || session?.user?.name || "Anonymous";
+  const { isFirebaseReady } = useFirebase();
 
-  const [tournament, setTournament] = useState<Tournament | null>(null);
-  const [role, setRole] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { tournament, role, isLoading: loading, error: fetchError, mutate } = useTournament(id);
   const [starting, setStarting] = useState(false);
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [resyncing, setResyncing] = useState(false);
+
+  // Availability state
+  const [availablePlayers, setAvailablePlayers] = useState<AvailabilityDoc[]>([]);
+  const [myAvailability, setMyAvailability] = useState<AvailabilityDoc | null>(null);
+  const [availPopoverOpen, setAvailPopoverOpen] = useState(false);
+  const [customMinutes, setCustomMinutes] = useState("");
+
+  // Ready-to-play match invites
+  const [readyMatches, setReadyMatches] = useState<MatchInviteDoc[]>([]);
+
+  // Listen to availability
+  useEffect(() => {
+    if (!id || !isFirebaseReady) return;
+    const availRef = collection(getDb(), "tournaments", id, "availability");
+    const unsub = onSnapshot(availRef, (snapshot) => {
+      const now = new Date();
+      const docs: AvailabilityDoc[] = snapshot.docs
+        .map((d) => ({ odcId: d.id, ...d.data() } as AvailabilityDoc))
+        .filter((d) => {
+          if (!d.available) return false;
+          if (d.expiresAt && d.expiresAt.toDate() < now) return false;
+          return true;
+        });
+      setAvailablePlayers(docs);
+      if (userId) {
+        const mine = snapshot.docs.find((d) => d.id === userId);
+        setMyAvailability(mine ? { odcId: mine.id, ...mine.data() } as AvailabilityDoc : null);
+      }
+    });
+    return () => unsub();
+  }, [id, isFirebaseReady, userId]);
+
+  // Listen to accepted match invites (exclude finished matches & expired after 30 min)
+  const finishedMatchIds = useMemo(() => {
+    if (!tournament?.matches) return new Set<string>();
+    return new Set(tournament.matches.filter((m: Match) => m.status === "FINISHED").map((m: Match) => m.id));
+  }, [tournament?.matches]);
 
   useEffect(() => {
-    if (!id) return;
-    const fetchTournament = async () => {
-      try {
-        const res = await fetch(`/api/tournaments/${id}`);
-        const data = await res.json();
-        if (res.ok) {
-          setTournament(data.tournament);
-          setRole(data.role || null);
-        } else {
-          toast.error("Failed to load tournament", { description: data.error });
-          router.push("/dashboard");
-        }
-      } catch {
-        toast.error("Failed to load tournament");
-        router.push("/dashboard");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchTournament();
-  }, [id, router]);
+    if (!id || !isFirebaseReady) return;
+    const invitesRef = collection(getDb(), "tournaments", id, "matchInvites");
+    const unsub = onSnapshot(invitesRef, (snapshot) => {
+      const now = Date.now();
+      const THIRTY_MINUTES = 30 * 60 * 1000;
+      const accepted: MatchInviteDoc[] = snapshot.docs
+        .filter((d) => {
+          const data = d.data();
+          if (data.status !== "accepted") return false;
+          if (finishedMatchIds.has(data.matchId)) return false;
+          if (data.createdAt && data.createdAt.toDate().getTime() + THIRTY_MINUTES < now) return false;
+          return true;
+        })
+        .map((d) => ({ id: d.id, ...d.data() } as MatchInviteDoc));
+      setReadyMatches(accepted);
+    });
+    return () => unsub();
+  }, [id, isFirebaseReady, finishedMatchIds]);
+
+  const isCurrentlyAvailable = useMemo(() => {
+    if (!myAvailability || !myAvailability.available) return false;
+    if (myAvailability.expiresAt && myAvailability.expiresAt.toDate() < new Date()) return false;
+    return true;
+  }, [myAvailability]);
+
+  const handleSetAvailability = async (minutes: number | null) => {
+    if (!userId || !id) return;
+    const expiresAt = minutes
+      ? Timestamp.fromDate(new Date(Date.now() + minutes * 60 * 1000))
+      : null;
+    await setDoc(doc(getDb(), "tournaments", id, "availability", userId), {
+      available: true,
+      userName,
+      expiresAt,
+      updatedAt: Timestamp.now(),
+    });
+    setAvailPopoverOpen(false);
+    setCustomMinutes("");
+    toast.success(minutes ? `You're available for ${minutes} minutes` : "You're available until you turn off");
+  };
+
+  const handleSetUnavailable = async () => {
+    if (!userId || !id) return;
+    await setDoc(doc(getDb(), "tournaments", id, "availability", userId), {
+      available: false,
+      userName,
+      expiresAt: null,
+      updatedAt: Timestamp.now(),
+    });
+    toast.success("You're now unavailable");
+  };
+
+  useEffect(() => {
+    if (fetchError) {
+      toast.error("Failed to load tournament", { description: (fetchError as any).info?.error });
+      router.push("/dashboard");
+    }
+  }, [fetchError, router]);
 
   const handleStartTournament = async () => {
     if (!tournament) return;
@@ -150,7 +269,7 @@ export default function TournamentPage() {
         toast.success("Tournament started!", {
           description: `${data.matches.length} matches have been generated.`,
         });
-        setTimeout(() => window.location.reload(), 1000);
+        mutate();
       } else {
         toast.error("Failed to start tournament", { description: data.error });
       }
@@ -172,7 +291,7 @@ export default function TournamentPage() {
       if (res.ok) {
         if (data.finished) {
           toast.success("Tournament finished!");
-          setTimeout(() => window.location.reload(), 1000);
+          mutate();
         } else {
           toast.success(data.message);
         }
@@ -197,8 +316,33 @@ export default function TournamentPage() {
     }
   };
 
+  const handleResyncMatches = async () => {
+    setResyncing(true);
+    try {
+      const res = await fetch(`/api/tournaments/${id}/resync`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        const parts = [];
+        if (data.matchesCreated > 0) parts.push(`${data.matchesCreated} created`);
+        if (data.matchesDeleted > 0) parts.push(`${data.matchesDeleted} removed`);
+        if (data.matchesStaled > 0) parts.push(`${data.matchesStaled} marked stale`);
+        toast.success("Matches resynced!", {
+          description: parts.length > 0 ? parts.join(", ") : "No changes needed",
+        });
+        mutate();
+        invalidateMatches(id);
+      } else {
+        toast.error("Failed to resync matches", { description: data.error });
+      }
+    } catch {
+      toast.error("Failed to resync matches");
+    } finally {
+      setResyncing(false);
+    }
+  };
+
   const standings = useMemo(
-    () => (tournament ? computeStandings(tournament.matches) : []),
+    () => (tournament ? computeStandings(tournament.matches.filter((m: Match) => m.status !== "STALE")) : []),
     [tournament]
   );
 
@@ -244,9 +388,11 @@ export default function TournamentPage() {
 
   if (!tournament) return null;
 
-  const pendingMatches = tournament.matches.filter((m) => m.status === "PENDING").length;
-  const finishedMatches = tournament.matches.filter((m) => m.status === "FINISHED").length;
-  const totalMatches = tournament.matches.length;
+  const activeMatches = tournament.matches.filter((m: Match) => m.status !== "STALE");
+  const pendingMatches = activeMatches.filter((m: Match) => m.status === "PENDING").length;
+  const finishedMatches = activeMatches.filter((m: Match) => m.status === "FINISHED").length;
+  const totalMatches = activeMatches.length;
+  const staleMatches = tournament.matches.filter((m: Match) => m.status === "STALE").length;
   const progress = totalMatches > 0 ? Math.round((finishedMatches / totalMatches) * 100) : 0;
   const isOrganizer = role === "organizer";
   const isManager = role === "manager";
@@ -374,6 +520,35 @@ export default function TournamentPage() {
                 Finish Tournament
               </Button>
             )}
+            {isOrganizer && tournament.status === "ONGOING" && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" disabled={resyncing}>
+                    {resyncing ? (
+                      <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Resyncing...</>
+                    ) : (
+                      <><RefreshCw className="h-4 w-4 mr-2" />Resync Matches</>
+                    )}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Resync Matches?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will add matches for new players and handle removed players&apos; matches.
+                      Pending matches of removed players will be deleted, and their finished matches will be marked as stale.
+                      Existing match results will not be affected.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleResyncMatches}>
+                      Resync
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             {isOrganizer && (
               <Link href={`/tournaments/${id}/settings`}>
                 <Button variant="outline" size="sm">
@@ -416,6 +591,12 @@ export default function TournamentPage() {
             <Button variant="outline">
               <Gamepad2 className="h-4 w-4 sm:mr-2" />
               <span className="hidden sm:inline">Matches</span>
+            </Button>
+          </Link>
+          <Link href={`/tournaments/${id}/chat`} className="hidden md:block">
+            <Button variant="outline">
+              <MessageCircle className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Chat</span>
             </Button>
           </Link>
           {tournament.status !== "FINISHED" && (
@@ -554,6 +735,128 @@ export default function TournamentPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Availability Toggle — only for active participants (joined & not removed) */}
+      {tournament.status !== "FINISHED" && (() => {
+        const activeParticipant = tournament.participants?.some(
+          (p: any) => (p.userId === userId || p.user?.id === userId) && !p.removedAt
+        );
+        return activeParticipant;
+      })() && (
+        <Card className="mt-6">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Zap className="h-4 w-4 text-emerald-600" />
+                Availability
+              </CardTitle>
+              {isCurrentlyAvailable ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={handleSetUnavailable}
+                >
+                  Set Unavailable
+                </Button>
+              ) : (
+                <Popover open={availPopoverOpen} onOpenChange={setAvailPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button size="sm" className="text-xs bg-emerald-600 hover:bg-emerald-700">
+                      <Timer className="h-3.5 w-3.5 mr-1" />
+                      I&apos;m Available
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-3" align="end">
+                    <p className="text-xs font-medium text-gray-700 mb-2">Available for:</p>
+                    <div className="grid grid-cols-2 gap-1.5 mb-2">
+                      <Button size="sm" variant="outline" className="text-xs h-8" onClick={() => handleSetAvailability(15)}>15 min</Button>
+                      <Button size="sm" variant="outline" className="text-xs h-8" onClick={() => handleSetAvailability(30)}>30 min</Button>
+                      <Button size="sm" variant="outline" className="text-xs h-8" onClick={() => handleSetAvailability(60)}>1 hour</Button>
+                      <Button size="sm" variant="outline" className="text-xs h-8" onClick={() => handleSetAvailability(120)}>2 hours</Button>
+                    </div>
+                    <div className="flex gap-1.5 mb-2">
+                      <Input
+                        type="number"
+                        placeholder="Custom min"
+                        value={customMinutes}
+                        onChange={(e) => setCustomMinutes(e.target.value)}
+                        className="h-8 text-xs"
+                        min={1}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs h-8 shrink-0"
+                        disabled={!customMinutes || parseInt(customMinutes) < 1}
+                        onClick={() => handleSetAvailability(parseInt(customMinutes))}
+                      >
+                        Set
+                      </Button>
+                    </div>
+                    <Button size="sm" variant="ghost" className="w-full text-xs h-8" onClick={() => handleSetAvailability(null)}>
+                      Until I turn off
+                    </Button>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {availablePlayers.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-2">No players available right now</p>
+            ) : (
+              <div className="space-y-1.5">
+                {availablePlayers.map((p) => {
+                  const remaining = p.expiresAt
+                    ? Math.max(0, Math.round((p.expiresAt.toDate().getTime() - Date.now()) / 60000))
+                    : null;
+                  return (
+                    <div key={p.odcId} className="flex items-center justify-between p-2 rounded-lg bg-emerald-50 text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                        <span className="font-medium text-gray-900">{p.userName}</span>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {remaining !== null ? `${remaining}m left` : "∞"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Ready to Play — Accepted Match Invites */}
+      {readyMatches.length > 0 && (
+        <Card className="mt-6">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Gamepad2 className="h-4 w-4 text-indigo-600" />
+              Ready to Play
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {readyMatches.map((inv) => (
+                <div key={inv.id} className="flex items-center justify-between p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      Match #{inv.matchNumber}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {Object.values(inv.playerNames || {}).join(", ")}
+                    </p>
+                  </div>
+                  <Badge className="bg-emerald-600 text-white text-[10px]">All accepted</Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Finish Tournament Dialog */}
       <AlertDialog open={finishDialogOpen} onOpenChange={setFinishDialogOpen}>

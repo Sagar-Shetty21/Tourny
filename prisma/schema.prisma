@@ -25,6 +25,7 @@ enum TournamentStatus {
 enum MatchStatus {
   PENDING
   FINISHED
+  STALE
 }
 
 enum TournamentRole {
@@ -54,6 +55,7 @@ model User {
   matchesAsPlayer4    Match[] @relation("MatchPlayer4")
   activityLogs        ActivityLog[]
   finishVotes         TournamentFinishVote[]
+  fcmTokens           FcmToken[]
 }
 
 model Account {
@@ -137,6 +139,7 @@ model Participant {
   tournamentId String
   userId       String
   joinedAt     DateTime   @default(now())
+  removedAt    DateTime?
 
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -206,4 +209,16 @@ model TournamentFinishVote {
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tournamentId, userId])
+}
+
+model FcmToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

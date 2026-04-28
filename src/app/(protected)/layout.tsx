@@ -8,8 +8,11 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Menu, Home, Trophy, PlusCircle, LogOut, User } from "lucide-react";
+import { Menu, Home, Trophy, PlusCircle, LogOut, User, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import FirebaseProvider from "@/components/FirebaseProvider";
+import PwaInstallPrompt from "@/components/PwaInstallPrompt";
+import PushNotificationManager from "@/components/PushNotificationManager";
 
 export default function ProtectedLayout({
   children,
@@ -20,6 +23,11 @@ export default function ProtectedLayout({
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const router = useRouter();
+
+  // Detect if inside a tournament (not /tournaments/create)
+  const tournamentMatch = pathname.match(/\/tournaments\/([^/]+)/);
+  const tournamentId = tournamentMatch && tournamentMatch[1] !== "create" ? tournamentMatch[1] : null;
+  const isOnChatPage = !!tournamentId && pathname.endsWith("/chat");
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -48,6 +56,7 @@ export default function ProtectedLayout({
   ];
 
   return (
+    <FirebaseProvider>
     <div className="min-h-screen bg-white">
       {/* Top Navigation - Desktop Only */}
       <nav className="hidden md:block bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
@@ -154,9 +163,13 @@ export default function ProtectedLayout({
       </Sheet>
 
       {/* Main Content */}
-      <main className="pb-24 md:pb-8">{children}</main>
+      <main className={cn("pb-24 md:pb-8", isOnChatPage && "pb-0")}>{children}</main>
 
-      {/* Mobile Bottom Navigation */}
+      <PwaInstallPrompt />
+      <PushNotificationManager />
+
+      {/* Mobile Bottom Navigation — hidden on chat page */}
+      {!isOnChatPage && (
       <div className="md:hidden fixed bottom-2 left-4 right-4 border border-gray-200 z-50 shadow-2xl rounded-2xl" style={{ backgroundColor: '#ffe6c1' }}>
         <div className="grid grid-cols-3 gap-1 p-2 max-w-md mx-auto">
           <Link href="/dashboard">
@@ -179,6 +192,18 @@ export default function ProtectedLayout({
               )}>Home</span>
             </Button>
           </Link>
+          {tournamentId ? (
+            <Link href={`/tournaments/${tournamentId}/chat`}>
+              <Button
+                variant="ghost"
+                className="w-full flex flex-col items-center gap-1 h-auto py-3 rounded-xl transition-all"
+                size="sm"
+              >
+                <MessageCircle className="h-5 w-5 text-gray-600" />
+                <span className="text-xs font-medium text-gray-600">Chat</span>
+              </Button>
+            </Link>
+          ) : (
           <Link href="/tournaments/create">
             <Button
               variant={pathname.includes("/tournaments/create") ? "default" : "ghost"}
@@ -199,6 +224,7 @@ export default function ProtectedLayout({
               )}>Create</span>
             </Button>
           </Link>
+          )}
           <Button
             variant="ghost"
             className="w-full flex flex-col items-center gap-1 h-auto py-3 rounded-xl transition-all"
@@ -210,6 +236,8 @@ export default function ProtectedLayout({
           </Button>
         </div>
       </div>
+      )}
     </div>
+    </FirebaseProvider>
   );
 }

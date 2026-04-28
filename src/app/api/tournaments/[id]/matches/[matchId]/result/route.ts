@@ -2,6 +2,8 @@ import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserRole, logActivity } from "@/lib/tournament-utils";
+import { writeTournamentEvent } from "@/lib/firebase-events";
+import { sendPushToUsers } from "@/lib/push-notifications";
 
 // POST /api/tournaments/[id]/matches/[matchId]/result - Submit match result
 export async function POST(
@@ -90,6 +92,46 @@ export async function POST(
       matchId,
       result,
     });
+
+    // Get match details for the event
+    const matchWithPlayers = await prisma.match.findUnique({
+      where: { id: matchId },
+      include: {
+        player1: { select: { name: true, username: true } },
+        player2: { select: { name: true, username: true } },
+        player3: { select: { name: true, username: true } },
+        player4: { select: { name: true, username: true } },
+      },
+    });
+    const allMatches = await prisma.match.findMany({
+      where: { tournamentId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true },
+    });
+    const matchNumber = allMatches.findIndex((m) => m.id === matchId) + 1;
+    const isDoubles = !!(matchWithPlayers?.player3 && matchWithPlayers?.player4);
+    const t1Name = isDoubles
+      ? `${matchWithPlayers?.player1?.name || matchWithPlayers?.player1?.username || "?"} & ${matchWithPlayers?.player2?.name || matchWithPlayers?.player2?.username || "?"}`
+      : matchWithPlayers?.player1?.name || matchWithPlayers?.player1?.username || "?";
+    const t2Name = isDoubles
+      ? `${matchWithPlayers?.player3?.name || matchWithPlayers?.player3?.username || "?"} & ${matchWithPlayers?.player4?.name || matchWithPlayers?.player4?.username || "?"}`
+      : matchWithPlayers?.player2?.name || matchWithPlayers?.player2?.username || "?";
+    const resultText = result.winner === "draw" ? `${t1Name} vs ${t2Name} — Draw` : result.winner === "team1" ? `${t1Name} beat ${t2Name}` : `${t2Name} beat ${t1Name}`;
+
+    await writeTournamentEvent(tournamentId, "match_completed", {
+      matchId,
+      matchNumber,
+      resultText,
+    });
+
+    // Push to players in this match
+    const matchPlayerIds = [match.player1Id, match.player2Id, match.player3Id, match.player4Id].filter(Boolean) as string[];
+    sendPushToUsers(
+      matchPlayerIds,
+      "Match Result",
+      `Match #${matchNumber} — ${resultText}`,
+      `/tournaments/${tournamentId}/matches`
+    ).catch(() => {});
 
     // Check if all matches are finished (inform frontend, but don't auto-finish)
     const pendingMatches = await prisma.match.count({

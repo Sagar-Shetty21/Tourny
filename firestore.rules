@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Tournament chat, availability, and match invites
+    match /tournaments/{tournamentId} {
+
+      // Messages subcollection
+      match /messages/{messageId} {
+        // Any authenticated user can read messages
+        allow read: if request.auth != null;
+
+        // Only authenticated users can write chat messages
+        // System events are written by the server (admin SDK bypasses rules)
+        allow create: if request.auth != null
+          && request.resource.data.type == "chat"
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000;
+
+        // Messages cannot be updated or deleted
+        allow update, delete: if false;
+      }
+
+      // Availability subcollection
+      match /availability/{userId} {
+        // Any authenticated user can read availability
+        allow read: if request.auth != null;
+
+        // Users can only write their own availability
+        allow write: if request.auth != null
+          && request.auth.uid == userId;
+      }
+
+      // Match invites subcollection
+      match /matchInvites/{inviteId} {
+        // Any authenticated user can read invites
+        allow read: if request.auth != null;
+
+        // Any authenticated user can create an invite
+        allow create: if request.auth != null
+          && request.resource.data.inviterId == request.auth.uid;
+
+        // Players involved in the invite can update their vote
+        allow update: if request.auth != null
+          && request.auth.uid in resource.data.playerIds;
+
+        allow delete: if false;
+      }
+
+      // Chat presence subcollection (tracks who is viewing the chat)
+      match /chatPresence/{presenceUserId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null
+          && request.auth.uid == presenceUserId;
+        allow delete: if request.auth != null
+          && request.auth.uid == presenceUserId;
+      }
+    }
+  }
+}

@@ -1,3 +1,18 @@
+// Firebase Cloud Messaging integration
+importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js");
+
+firebase.initializeApp({
+  apiKey: "AIzaSyA5jIcoCw27DTnECAJm62zxzYaRkh33vlw",
+  authDomain: "tourny-4b116.firebaseapp.com",
+  projectId: "tourny-4b116",
+  storageBucket: "tourny-4b116.firebasestorage.app",
+  messagingSenderId: "881814609335",
+  appId: "1:881814609335:web:b5f03d491953926471dc32",
+});
+
+const messaging = firebase.messaging();
+
 // Service Worker for Tourny PWA
 const CACHE_NAME = 'tourny-v2';
 const urlsToCache = [
@@ -137,28 +152,38 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Push notification event (for future use)
-self.addEventListener('push', (event) => {
-  const options = {
-    body: event.data ? event.data.text() : 'New tournament update',
-    icon: '/icon-192x192.png',
-    badge: '/icon-192x192.png',
-    vibrate: [100, 50, 100],
+// Handle background push messages via Firebase Cloud Messaging
+messaging.onBackgroundMessage((payload) => {
+  const { title, body } = payload.notification || {};
+  if (!title) return;
+
+  const notificationOptions = {
+    body: body || "",
+    icon: "/icon-192x192.png",
+    badge: "/icon-192x192.png",
     data: {
-      dateOfArrival: Date.now(),
-      primaryKey: 1
-    }
+      url: payload.fcmOptions?.link || "/dashboard",
+    },
   };
 
-  event.waitUntil(
-    self.registration.showNotification('Tourny', options)
-  );
+  self.registration.showNotification(title, notificationOptions);
 });
 
-// Notification click event
-self.addEventListener('notificationclick', (event) => {
+// Handle notification click — open or focus the relevant page
+self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const url = event.notification.data?.url || "/dashboard";
+
   event.waitUntil(
-    clients.openWindow('/dashboard')
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin)) {
+          client.focus();
+          client.navigate(url);
+          return;
+        }
+      }
+      return clients.openWindow(url);
+    })
   );
 });
