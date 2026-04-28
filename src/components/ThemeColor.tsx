@@ -7,7 +7,7 @@ export function ThemeColor() {
   const pathname = usePathname();
 
   useEffect(() => {
-    let color = '#da6c6c'; // default
+    let color = '#ffb689'; // default — matches manifest theme_color
 
     // White for auth pages (login/signup)
     if (pathname.includes('/sign-in') || pathname.includes('/sign-up')) {

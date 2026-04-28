@@ -1,8 +1,5 @@
 "use client";
 
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,25 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Trophy, Target, Zap, BarChart3 } from "lucide-react";
 
 export default function Home() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (status === "authenticated" && session) {
-      const redirect = sessionStorage.getItem("auth_redirect");
-      if (redirect) {
-        sessionStorage.removeItem("auth_redirect");
-        router.push(redirect);
-      } else {
-        router.push("/dashboard");
-      }
-    }
-  }, [status, session, router]);
-
-  if (status === "authenticated") {
-    return null;
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation */}

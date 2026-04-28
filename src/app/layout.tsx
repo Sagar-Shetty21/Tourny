@@ -37,7 +37,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#da6c6c",
+  themeColor: "#ffb689",
 };
 
 export default function RootLayout({
@@ -51,7 +51,6 @@ export default function RootLayout({
         <head>
           <link rel="manifest" href="/manifest.json" />
           <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-          <meta name="theme-color" content="#da6c6c" />
         </head>
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
