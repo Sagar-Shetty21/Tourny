@@ -154,16 +154,18 @@ self.addEventListener('fetch', (event) => {
 
 // Handle background push messages via Firebase Cloud Messaging
 messaging.onBackgroundMessage((payload) => {
-  const { title, body } = payload.notification || {};
+  const data = payload.data || {};
+  const title = data.title;
   if (!title) return;
 
   const notificationOptions = {
-    body: body || "",
-    icon: "/icon-192x192.png",
-    badge: "/icon-192x192.png",
+    body: data.body || "",
+    icon: data.icon || "/icon-192x192.png",
+    badge: data.badge || "/badge-96x96.png",
     data: {
-      url: payload.fcmOptions?.link || "/dashboard",
+      url: data.url || "/dashboard",
     },
+    ...(data.tag ? { tag: data.tag, renotify: true } : {}),
   };
 
   self.registration.showNotification(title, notificationOptions);

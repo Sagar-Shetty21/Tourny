@@ -58,7 +58,8 @@ export async function POST(
       recipientIds,
       `${senderName} in chat`,
       truncatedText,
-      `/tournaments/${tournamentId}/chat`
+      `/tournaments/${tournamentId}/chat`,
+      { tag: `chat-${tournamentId}` }
     );
 
     return NextResponse.json({ success: true, sent: recipientIds.length });

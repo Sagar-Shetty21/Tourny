@@ -80,7 +80,8 @@ export default function PushNotificationManager() {
       const messaging = await getFirebaseMessaging();
       if (!messaging) return;
       unsub = onMessage(messaging, (payload) => {
-        const { title, body } = payload.notification || {};
+        const title = payload.data?.title || payload.notification?.title;
+        const body = payload.data?.body || payload.notification?.body;
         if (title) {
           toast(title, { description: body });
         }
