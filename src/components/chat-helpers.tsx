@@ -203,9 +203,11 @@ export function SystemEventBadge({ message }: { message: ChatMessage }) {
   return (
     <div className="flex justify-center my-2">
       <div className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium ${config.bg} ${config.text}`}>
-        {config.icon}
-        {config.label}
-        <span className="text-[10px] opacity-60 ml-1">{formatMessageTime(message.timestamp)}</span>
+        <span className="shrink-0 [&>svg]:h-3.5 [&>svg]:w-3.5 sm:[&>svg]:h-3 sm:[&>svg]:w-3">{config.icon}</span>
+        <span className="flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
+          <span>{config.label}</span>
+          <span className="text-[10px] opacity-60">{formatMessageTime(message.timestamp)}</span>
+        </span>
       </div>
     </div>
   );

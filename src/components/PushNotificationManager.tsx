@@ -82,6 +82,11 @@ export default function PushNotificationManager() {
       unsub = onMessage(messaging, (payload) => {
         const title = payload.data?.title || payload.notification?.title;
         const body = payload.data?.body || payload.notification?.body;
+        const url = payload.data?.url || "";
+        // Suppress chat toasts when already on that chat page
+        if (url.endsWith("/chat") && window.location.pathname === url) {
+          return;
+        }
         if (title) {
           toast(title, { description: body });
         }
