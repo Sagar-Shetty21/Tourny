@@ -62,25 +62,6 @@ export default function RootLayout({
             __html: `
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
-                  // Unregister old service worker and clear caches
-                  navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                    for (let registration of registrations) {
-                      registration.unregister();
-                    }
-                  });
-                  
-                  // Clear old caches
-                  if ('caches' in window) {
-                    caches.keys().then(function(cacheNames) {
-                      cacheNames.forEach(function(cacheName) {
-                        if (cacheName.startsWith('tourny-v')) {
-                          caches.delete(cacheName);
-                        }
-                      });
-                    });
-                  }
-                  
-                  // Register new service worker
                   navigator.serviceWorker.register('/sw.js').then(
                     function(registration) {
                       console.log('ServiceWorker registration successful');

@@ -22,8 +22,8 @@ export default function PushNotificationManager() {
       const messaging = await getFirebaseMessaging();
       if (!messaging) return;
 
-      // Use the already-registered main service worker
-      const swRegistration = await navigator.serviceWorker.ready;
+      // Ensure the service worker is registered and get its registration
+      const swRegistration = await navigator.serviceWorker.register('/sw.js');
 
       const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
       if (!vapidKey) {
