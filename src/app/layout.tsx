@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
 import AuthProvider from "@/components/AuthProvider";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeColor } from "@/components/ThemeColor";
+import NavigationProgress from "@/components/NavigationProgress";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -56,6 +58,9 @@ export default function RootLayout({
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
           <ThemeColor />
+          <Suspense fallback={null}>
+            <NavigationProgress />
+          </Suspense>
           {children}
           <Toaster />
           <script dangerouslySetInnerHTML={{

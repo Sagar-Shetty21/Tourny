@@ -32,6 +32,7 @@ import {
   ArrowLeft,
   X,
   Reply,
+  BarChart3,
 } from "lucide-react";
 import {
   ChatMessage,
@@ -410,8 +411,14 @@ export default function ChatPage() {
                 Matches
               </Button>
             </Link>
+            <Link href={`/tournaments/${id}/matches?view=standings`}>
+              <Button variant="outline" size="sm">
+                <BarChart3 className="h-4 w-4 mr-1.5" />
+                Standings
+              </Button>
+            </Link>
             <Link href={`/tournaments/${id}/chat`}>
-              <Button size="sm" className="bg-gray-900 text-white hover:bg-gray-800">
+              <Button size="sm" className="text-white" style={{ backgroundColor: '#da6c6c' }}>
                 <MessageCircle className="h-4 w-4 mr-1.5" />
                 Chat
               </Button>

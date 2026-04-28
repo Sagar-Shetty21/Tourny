@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Copy, RefreshCw, Info, Share2, CheckCircle2, ExternalLink, Trash2, Trophy, Users, Gamepad2, UserPlus, MessageCircle } from "lucide-react";
+import { ArrowLeft, Copy, RefreshCw, Info, Share2, CheckCircle2, ExternalLink, Trash2, Trophy, Users, Gamepad2, UserPlus, MessageCircle, BarChart3 } from "lucide-react";
 import { useTournament } from "@/lib/swr";
 
 interface Invite {
@@ -155,33 +155,39 @@ export default function InvitePage() {
       <div className="mb-6 overflow-x-auto">
         <div className="flex gap-2 min-w-max">
           <Link href={`/tournaments/${id}`}>
-            <Button variant="outline">
-              <Trophy className="h-4 w-4 sm:mr-2" />
+            <Button variant="outline" size="sm">
+              <Trophy className="h-4 w-4 sm:mr-1.5" />
               <span className="hidden sm:inline">Overview</span>
             </Button>
           </Link>
           <Link href={`/tournaments/${id}/players`}>
-            <Button variant="outline">
-              <Users className="h-4 w-4 sm:mr-2" />
+            <Button variant="outline" size="sm">
+              <Users className="h-4 w-4 sm:mr-1.5" />
               <span className="hidden sm:inline">Players</span>
             </Button>
           </Link>
           <Link href={`/tournaments/${id}/matches`}>
-            <Button variant="outline">
-              <Gamepad2 className="h-4 w-4 sm:mr-2" />
+            <Button variant="outline" size="sm">
+              <Gamepad2 className="h-4 w-4 sm:mr-1.5" />
               <span className="hidden sm:inline">Matches</span>
             </Button>
           </Link>
+          <Link href={`/tournaments/${id}/matches?view=standings`}>
+            <Button variant="outline" size="sm">
+              <BarChart3 className="h-4 w-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Standings</span>
+            </Button>
+          </Link>
           <Link href={`/tournaments/${id}/chat`} className="hidden md:block">
-            <Button variant="outline">
-              <MessageCircle className="h-4 w-4 sm:mr-2" />
+            <Button variant="outline" size="sm">
+              <MessageCircle className="h-4 w-4 sm:mr-1.5" />
               <span className="hidden sm:inline">Chat</span>
             </Button>
           </Link>
           {tournamentStatus !== "FINISHED" && (
             <Link href={`/tournaments/${id}/invite`}>
-              <Button variant="outline" className="text-white" style={{ backgroundColor: '#da6c6c' }}>
-                <UserPlus className="h-4 w-4 sm:mr-2" />
+              <Button variant="outline" size="sm" className="text-white" style={{ backgroundColor: '#da6c6c' }}>
+                <UserPlus className="h-4 w-4 sm:mr-1.5" />
                 <span className="hidden sm:inline">Invite</span>
               </Button>
             </Link>

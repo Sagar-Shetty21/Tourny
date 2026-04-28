@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   collection,
@@ -221,7 +221,15 @@ export default function MatchesPage() {
   const tournamentType = tournamentData?.type ?? "SINGLES";
   const tournamentStatus = tournamentData?.status ?? "OPEN";
   const [filter, setFilter] = useState<string>("all");
+  const searchParams = useSearchParams();
   const [resetting, setResetting] = useState<string | null>(null);
+
+  // Initialize filter from URL param
+  useEffect(() => {
+    if (searchParams.get("view") === "standings") {
+      setFilter("standings");
+    }
+  }, [searchParams]);
 
   // Result dialog state
   const [resultDialogOpen, setResultDialogOpen] = useState(false);
@@ -457,15 +465,16 @@ export default function MatchesPage() {
             </Button>
           </Link>
           <Link href={`/tournaments/${id}/matches`}>
-            <Button size="sm" className={filter !== "standings" ? "bg-gray-900 text-white hover:bg-gray-800" : ""}  variant={filter !== "standings" ? "default" : "outline"}>
+            <Button size="sm" variant="outline" className={filter !== "standings" ? "text-white" : ""} style={filter !== "standings" ? { backgroundColor: '#da6c6c' } : {}} onClick={() => { if (filter === "standings") setFilter("all"); }}>
               <Gamepad2 className="h-4 w-4 sm:mr-1.5" />
               <span className="hidden sm:inline">Matches</span>
             </Button>
           </Link>
           <Button
-            variant={filter === "standings" ? "default" : "outline"}
+            variant="outline"
             size="sm"
-            className={filter === "standings" ? "bg-gray-900 text-white hover:bg-gray-800" : ""}
+            className={filter === "standings" ? "text-white" : ""}
+            style={filter === "standings" ? { backgroundColor: '#da6c6c' } : {}}
             onClick={() => setFilter(filter === "standings" ? "all" : "standings")}
           >
             <BarChart3 className="h-4 w-4 sm:mr-1.5" />
