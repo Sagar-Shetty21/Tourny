@@ -110,6 +110,14 @@ export async function POST(
       );
     }
 
+    // Resync not supported for Swiss and King of the Court
+    if (tournament.matchmakingMethod === "SWISS" || tournament.matchmakingMethod === "KING_OF_THE_COURT") {
+      return NextResponse.json(
+        { error: `Match resync is not supported for ${tournament.matchmakingMethod.replace(/_/g, " ")} format. Player changes mid-tournament are not available for this format.` },
+        { status: 400 }
+      );
+    }
+
     const activeParticipantIds = tournament.participants
       .filter((p) => p.removedAt === null)
       .map((p) => p.userId);

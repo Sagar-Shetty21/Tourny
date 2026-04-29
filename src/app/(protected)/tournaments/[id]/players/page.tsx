@@ -222,22 +222,22 @@ export default function PlayersPage() {
                       className="p-4 border rounded-lg hover:shadow-md transition-shadow"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3 mb-2">
-                            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-semibold text-gray-700">
+                            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-semibold text-gray-700 shrink-0">
                               {participant.user?.name
                                 ? participant.user.name.charAt(0).toUpperCase()
                                 : participant.user?.email?.charAt(0).toUpperCase() || "?"}
                             </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-semibold text-gray-900">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="font-semibold text-gray-900 truncate">
                                   {participant.user?.name || participant.user?.email || "Unknown User"}
                                 </h3>
                                 {tournament.owners.some(
                                   (owner) => owner.userId === participant.userId && owner.role === "ORGANIZER"
                                 ) && (
-                                  <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">
+                                  <Badge variant="secondary" className="bg-yellow-100 text-yellow-700 shrink-0">
                                     <Crown className="h-3 w-3 mr-1" />
                                     Organizer
                                   </Badge>
@@ -245,7 +245,7 @@ export default function PlayersPage() {
                                 {tournament.owners.some(
                                   (owner) => owner.userId === participant.userId && owner.role === "MANAGER"
                                 ) && (
-                                  <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                                  <Badge variant="secondary" className="bg-blue-100 text-blue-700 shrink-0">
                                     Manager
                                   </Badge>
                                 )}
@@ -322,19 +322,19 @@ export default function PlayersPage() {
                       className="p-3 border rounded-lg bg-gray-50 opacity-60"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center font-semibold text-gray-500 text-sm">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center font-semibold text-gray-500 text-sm shrink-0">
                             {participant.user?.name
                               ? participant.user.name.charAt(0).toUpperCase()
                               : participant.user?.email?.charAt(0).toUpperCase() || "?"}
                           </div>
-                          <div>
-                            <span className="text-sm text-gray-600">
+                          <div className="min-w-0">
+                            <span className="text-sm text-gray-600 truncate block">
                               {participant.user?.name || participant.user?.email || "Unknown User"}
                             </span>
                           </div>
                         </div>
-                        <Badge variant="outline" className="text-red-500 border-red-200">
+                        <Badge variant="outline" className="text-red-500 border-red-200 shrink-0">
                           Removed
                         </Badge>
                       </div>

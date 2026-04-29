@@ -186,6 +186,95 @@ export async function PATCH(
   }
 }
 
+const VALID_METHODS = ["ROUND_ROBIN", "SWISS", "ROTATING_PARTNER", "KING_OF_THE_COURT"];
+
+// PUT /api/tournaments/[id] - Update tournament settings (organizer only, OPEN only)
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await auth();
+    const userId = session?.user?.id;
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id: tournamentId } = await params;
+    const body = await req.json();
+
+    const role = await getUserRole(tournamentId, userId);
+    if (role !== "organizer") {
+      return NextResponse.json(
+        { error: "Only the tournament organizer can update settings" },
+        { status: 403 }
+      );
+    }
+
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: tournamentId },
+    });
+
+    if (!tournament) {
+      return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+    }
+
+    if (tournament.status !== "OPEN") {
+      return NextResponse.json(
+        { error: "Can only update settings when tournament is open" },
+        { status: 400 }
+      );
+    }
+
+    // Build update data from provided fields
+    const data: Record<string, unknown> = {};
+
+    if (body.name !== undefined) data.name = body.name;
+    if (body.maxParticipants !== undefined) data.maxParticipants = body.maxParticipants;
+    if (body.joinExpiry !== undefined) data.joinExpiry = body.joinExpiry ? new Date(body.joinExpiry) : null;
+
+    if (body.matchmakingMethod !== undefined) {
+      if (!VALID_METHODS.includes(body.matchmakingMethod)) {
+        return NextResponse.json(
+          { error: "Invalid matchmaking method" },
+          { status: 400 }
+        );
+      }
+      data.matchmakingMethod = body.matchmakingMethod;
+
+      // Clear format-specific fields when switching methods
+      if (body.matchmakingMethod !== "SWISS") {
+        data.totalRounds = null;
+      }
+      if (body.matchmakingMethod !== "KING_OF_THE_COURT") {
+        data.totalMatches = null;
+      }
+    }
+
+    if (body.totalRounds !== undefined) data.totalRounds = body.totalRounds;
+    if (body.totalMatches !== undefined) data.totalMatches = body.totalMatches;
+
+    const updatedTournament = await prisma.tournament.update({
+      where: { id: tournamentId },
+      data,
+      include: {
+        owners: true,
+        participants: true,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      tournament: updatedTournament,
+      message: "Tournament updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating tournament:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
 // DELETE /api/tournaments/[id] - Delete tournament (organizer only)
 export async function DELETE(
   req: NextRequest,

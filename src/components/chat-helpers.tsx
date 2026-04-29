@@ -21,6 +21,8 @@ import {
   Zap,
   Gamepad2,
   RotateCcw,
+  ArrowRightLeft,
+  Trophy,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -150,6 +152,24 @@ export function SystemEventBadge({ message }: { message: ChatMessage }) {
       bg: "bg-teal-50 border-teal-200",
       text: "text-teal-700",
       label: `${eventData?.userName || "A player"} is ready to play${eventData?.duration ? ` for ${eventData.duration}` : ""}`,
+    },
+    round_completed: {
+      icon: <ArrowRightLeft className="h-3 w-3" />,
+      bg: "bg-purple-50 border-purple-200",
+      text: "text-purple-700",
+      label: `Round ${eventData?.completedRound || "?"} completed — Round ${eventData?.newRound || "?"} starting${eventData?.totalRounds ? ` (of ${eventData.totalRounds})` : ""}`,
+    },
+    kotc_match_created: {
+      icon: <Trophy className="h-3 w-3" />,
+      bg: "bg-violet-50 border-violet-200",
+      text: "text-violet-700",
+      label: `New challenge! ${eventData?.challengerName || "Challenger"} vs ${eventData?.defenderName || "Defender"} (Match #${eventData?.matchNumber || "?"})`,
+    },
+    tournament_reset: {
+      icon: <RotateCcw className="h-3 w-3" />,
+      bg: "bg-amber-50 border-amber-200",
+      text: "text-amber-700",
+      label: `${eventData?.resetByName || "Organizer"} reset the tournament`,
     },
   };
 

@@ -76,7 +76,8 @@ interface Match {
   player3: Player | null;
   player4: Player | null;
   status: string;
-  result: { winner?: string } | null;
+  result: { winner?: string; defenderBonus?: number; bye?: boolean } | null;
+  round: number;
   createdAt: string;
 }
 
@@ -88,6 +89,7 @@ interface PlayerStanding {
   drawn: number;
   lost: number;
   points: number;
+  bonus: number;
 }
 
 function getInitials(name: string) {
@@ -147,11 +149,12 @@ function computeStandings(matches: Match[]): PlayerStanding[] {
 
   const ensure = (p: Player | null) => {
     if (!p) return;
-    if (!map.has(p.id)) map.set(p.id, { id: p.id, name: p.name, played: 0, won: 0, drawn: 0, lost: 0, points: 0 });
+    if (!map.has(p.id)) map.set(p.id, { id: p.id, name: p.name, played: 0, won: 0, drawn: 0, lost: 0, points: 0, bonus: 0 });
   };
 
   for (const m of matches) {
     if (m.status !== "FINISHED" || !m.result?.winner) continue;
+    if (m.result.bye) continue; // Skip bye matches in standings
     const isDoubles = !!(m.player3 && m.player4);
     const team1: Player[] = [m.player1, m.player2].filter(Boolean) as Player[];
     const team2: Player[] = isDoubles
@@ -162,6 +165,8 @@ function computeStandings(matches: Match[]): PlayerStanding[] {
     const singlesTeam2 = isDoubles ? team2 : [m.player2].filter(Boolean) as Player[];
 
     for (const p of [...singlesTeam1, ...singlesTeam2]) ensure(p);
+
+    const defenderBonus = m.result.defenderBonus || 0;
 
     if (m.result.winner === "draw") {
       for (const p of [...singlesTeam1, ...singlesTeam2]) {
@@ -175,7 +180,8 @@ function computeStandings(matches: Match[]): PlayerStanding[] {
         const s = map.get(p.id)!;
         s.played++;
         s.won++;
-        s.points += 3;
+        s.points += 3 + defenderBonus;
+        s.bonus += defenderBonus;
       }
       for (const p of singlesTeam2) {
         const s = map.get(p.id)!;
@@ -187,7 +193,8 @@ function computeStandings(matches: Match[]): PlayerStanding[] {
         const s = map.get(p.id)!;
         s.played++;
         s.won++;
-        s.points += 3;
+        s.points += 3 + defenderBonus;
+        s.bonus += defenderBonus;
       }
       for (const p of singlesTeam1) {
         const s = map.get(p.id)!;
@@ -220,6 +227,9 @@ export default function MatchesPage() {
   const loading = loadingTournament || loadingMatches;
   const tournamentType = tournamentData?.type ?? "SINGLES";
   const tournamentStatus = tournamentData?.status ?? "OPEN";
+  const matchmakingMethod = tournamentData?.matchmakingMethod ?? "ROUND_ROBIN";
+  const isRoundBased = matchmakingMethod === "SWISS" || matchmakingMethod === "ROTATING_PARTNER" || matchmakingMethod === "KING_OF_THE_COURT";
+  const isKotc = matchmakingMethod === "KING_OF_THE_COURT";
   const [filter, setFilter] = useState<string>("all");
   const searchParams = useSearchParams();
   const [resetting, setResetting] = useState<string | null>(null);
@@ -350,6 +360,12 @@ export default function MatchesPage() {
         mutateMatches();
         invalidateTournament(id);
         toast.success("Result submitted successfully");
+        if (data.newRoundGenerated) {
+          toast.info("New round generated! Scroll down to see new matches.");
+        }
+        if (data.nextMatchCreated) {
+          toast.info(`Next match is ready! Streak: ${data.kotcStatus?.streak || 0}`);
+        }
         if (data.allMatchesComplete) {
           toast.info("All matches completed! You can now finish the tournament from the Overview page.");
         }
@@ -389,6 +405,219 @@ export default function MatchesPage() {
   const isDoubles = tournamentType === "DOUBLES";
   const team1Label = isDoubles ? "Team 1" : "Player 1";
   const team2Label = isDoubles ? "Team 2" : "Player 2";
+
+  const renderMatchCard = (match: Match) => {
+    const matchNumber = matches.indexOf(match) + 1;
+    const result = getResultLabel(match);
+    const isDoublesMatch = !!(match.player3 && match.player4);
+    const bonus = match.result?.defenderBonus;
+
+    return (
+      <div
+        key={match.id}
+        className={`group relative rounded-xl border bg-white overflow-hidden transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 ${
+          match.status === "STALE"
+            ? "border-l-[3px] border-l-gray-300 opacity-60"
+            : match.status === "FINISHED"
+            ? "border-l-[3px] border-l-emerald-500"
+            : "border-l-[3px] border-l-amber-400"
+        }`}
+      >
+        <div className="p-4 sm:p-5">
+          {/* Top bar: match number + status */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center justify-center h-6 px-2.5 rounded-full bg-gray-100 text-[11px] font-semibold text-gray-600 uppercase tracking-wide">
+                Match {matchNumber}
+              </span>
+              {match.status === "STALE" ? (
+                <Badge variant="secondary" className="bg-gray-100 text-gray-500 border border-gray-200 text-[11px]">
+                  Stale
+                </Badge>
+              ) : match.status === "PENDING" ? (
+                <Badge variant="secondary" className="bg-amber-50 text-amber-700 border border-amber-200 text-[11px]">
+                  <Clock className="h-3 w-3 mr-1" />
+                  Pending
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px]">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Completed
+                </Badge>
+              )}
+              {bonus != null && bonus > 0 && (
+                <Badge variant="secondary" className="bg-orange-50 text-orange-700 border border-orange-200 text-[10px]">
+                  +{bonus} streak bonus
+                </Badge>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {match.status === "PENDING" && canManage && tournamentStatus === "ONGOING" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-8 hover:bg-gray-900 hover:text-white transition-colors"
+                  onClick={() => {
+                    setSelectedMatch(match);
+                    setResultDialogOpen(true);
+                  }}
+                >
+                  Submit Result
+                </Button>
+              )}
+              {match.status === "FINISHED" && isOrganizer && (() => {
+                const updatedAt = new Date(match.createdAt);
+                const hoursSince = (Date.now() - updatedAt.getTime()) / (1000 * 60 * 60);
+                return hoursSince <= 24;
+              })() && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-8 text-amber-600 border-amber-200 hover:bg-amber-50"
+                  disabled={resetting === match.id}
+                  onClick={() => handleResetMatch(match.id)}
+                >
+                  {resetting === match.id ? "Resetting..." : "Reset"}
+                </Button>
+              )}
+              {match.status === "PENDING" && tournamentStatus === "ONGOING" && filter === "my" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-8 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                  disabled={invitingMatch === match.id}
+                  onClick={() => handleInviteToPlay(match)}
+                >
+                  {invitingMatch === match.id ? "Sending..." : "Invite to Play"}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Players / Teams */}
+          {isDoublesMatch ? (
+            <div className="flex items-stretch gap-2 sm:gap-3">
+              {/* Team 1 */}
+              <div className={`flex-1 rounded-lg p-3 border transition-colors ${
+                result?.type === "win1"
+                  ? "bg-emerald-50 border-emerald-200"
+                  : "bg-gradient-to-br from-blue-50 to-indigo-50/50 border-blue-100"
+              }`}>
+                <p className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider mb-2">Team 1</p>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <PlayerAvatar player={match.player1} />
+                    <span className="text-sm font-medium text-gray-900 truncate">{match.player1?.name || "TBD"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <PlayerAvatar player={match.player2} />
+                    <span className="text-sm font-medium text-gray-900 truncate">{match.player2?.name || "TBD"}</span>
+                  </div>
+                </div>
+                {result?.type === "win1" && (
+                  <Badge className="mt-2 bg-emerald-600 text-white text-[10px]">
+                    <Trophy className="h-3 w-3 mr-1" />Won
+                  </Badge>
+                )}
+              </div>
+
+              {/* VS divider */}
+              <div className="flex items-center">
+                <div className="h-10 w-10 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center">
+                  <span className="text-xs font-black text-gray-400">VS</span>
+                </div>
+              </div>
+
+              {/* Team 2 */}
+              <div className={`flex-1 rounded-lg p-3 border transition-colors ${
+                result?.type === "win2"
+                  ? "bg-emerald-50 border-emerald-200"
+                  : "bg-gradient-to-br from-purple-50 to-fuchsia-50/50 border-purple-100"
+              }`}>
+                <p className="text-[10px] font-semibold text-purple-500 uppercase tracking-wider mb-2">Team 2</p>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <PlayerAvatar player={match.player3} />
+                    <span className="text-sm font-medium text-gray-900 truncate">{match.player3?.name || "TBD"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <PlayerAvatar player={match.player4} />
+                    <span className="text-sm font-medium text-gray-900 truncate">{match.player4?.name || "TBD"}</span>
+                  </div>
+                </div>
+                {result?.type === "win2" && (
+                  <Badge className="mt-2 bg-emerald-600 text-white text-[10px]">
+                    <Trophy className="h-3 w-3 mr-1" />Won
+                  </Badge>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Singles */
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className={`flex-1 rounded-lg p-3 sm:p-4 border text-center transition-colors ${
+                result?.type === "win1"
+                  ? "bg-emerald-50 border-emerald-200"
+                  : "bg-gradient-to-br from-blue-50 to-indigo-50/50 border-blue-100"
+              }`}>
+                <div className="flex flex-col items-center gap-1.5">
+                  <PlayerAvatar player={match.player1} size="md" />
+                  <span className="text-sm font-semibold text-gray-900 truncate max-w-full">
+                    {match.player1?.name || "TBD"}
+                  </span>
+                  {result?.type === "win1" && (
+                    <Badge className="bg-emerald-600 text-white text-[10px]">
+                      <Trophy className="h-3 w-3 mr-1" />Won
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center">
+                <div className="h-10 w-10 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center">
+                  <span className="text-xs font-black text-gray-400">VS</span>
+                </div>
+              </div>
+
+              <div className={`flex-1 rounded-lg p-3 sm:p-4 border text-center transition-colors ${
+                result?.type === "win2"
+                  ? "bg-emerald-50 border-emerald-200"
+                  : "bg-gradient-to-br from-purple-50 to-fuchsia-50/50 border-purple-100"
+              }`}>
+                <div className="flex flex-col items-center gap-1.5">
+                  <PlayerAvatar player={match.player2} size="md" />
+                  <span className="text-sm font-semibold text-gray-900 truncate max-w-full">
+                    {match.player2?.name || "TBD"}
+                  </span>
+                  {result?.type === "win2" && (
+                    <Badge className="bg-emerald-600 text-white text-[10px]">
+                      <Trophy className="h-3 w-3 mr-1" />Won
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Result banner */}
+          {result && (
+            <div className={`mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
+              result.type === "draw"
+                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+            }`}>
+              {result.type === "draw" ? (
+                <Minus className="h-3.5 w-3.5" />
+              ) : (
+                <Trophy className="h-3.5 w-3.5" />
+              )}
+              {result.text}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const handleInviteToPlay = async (match: Match) => {
     if (!userId || !id || !isFirebaseReady) return;
@@ -632,6 +861,7 @@ export default function MatchesPage() {
                 No completed matches yet. Results will appear here once matches are played.
               </div>
             ) : (
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50/80 hover:bg-gray-50/80">
@@ -664,7 +894,7 @@ export default function MatchesPage() {
                           <div className={`h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${avatarColor(s.id)}`}>
                             {getInitials(s.name)}
                           </div>
-                          <span className="font-medium text-gray-900 text-sm">{s.name}</span>
+                          <span className="font-medium text-gray-900 text-sm truncate max-w-[120px]">{s.name}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-center text-gray-600">{s.played}</TableCell>
@@ -672,14 +902,21 @@ export default function MatchesPage() {
                       <TableCell className="text-center text-amber-600">{s.drawn}</TableCell>
                       <TableCell className="text-center text-red-600">{s.lost}</TableCell>
                       <TableCell className="text-center">
-                        <span className="inline-flex items-center justify-center h-7 min-w-[28px] rounded-md bg-gray-900 text-white text-sm font-bold px-1.5">
+                        <span
+                          className="inline-flex items-center justify-center h-7 min-w-[28px] rounded-md bg-gray-900 text-white text-sm font-bold px-1.5 cursor-default"
+                          title={s.bonus > 0 ? `${s.won * 3} (wins) + ${s.drawn} (draws) + ${s.bonus} (streak bonus) = ${s.points}` : `${s.won * 3} (wins) + ${s.drawn} (draws) = ${s.points}`}
+                        >
                           {s.points}
+                          {s.bonus > 0 && (
+                            <span className="ml-1 text-[10px] text-orange-300 font-normal">+{s.bonus}</span>
+                          )}
                         </span>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -704,212 +941,67 @@ export default function MatchesPage() {
             </Alert>
           ) : (
             <div className="space-y-3">
-              {filteredMatches.map((match, index) => {
-                const matchNumber = matches.indexOf(match) + 1;
-                const result = getResultLabel(match);
-                const isDoublesMatch = !!(match.player3 && match.player4);
-
-                return (
-                  <div
-                    key={match.id}
-                    className={`group relative rounded-xl border bg-white overflow-hidden transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 ${
-                      match.status === "STALE"
-                        ? "border-l-[3px] border-l-gray-300 opacity-60"
-                        : match.status === "FINISHED"
-                        ? "border-l-[3px] border-l-emerald-500"
-                        : "border-l-[3px] border-l-amber-400"
-                    }`}
-                  >
-                    <div className="p-4 sm:p-5">
-                      {/* Top bar: match number + status */}
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center justify-center h-6 px-2.5 rounded-full bg-gray-100 text-[11px] font-semibold text-gray-600 uppercase tracking-wide">
-                            Match {matchNumber}
-                          </span>
-                          {match.status === "STALE" ? (
-                            <Badge variant="secondary" className="bg-gray-100 text-gray-500 border border-gray-200 text-[11px]">
-                              Stale
-                            </Badge>
-                          ) : match.status === "PENDING" ? (
-                            <Badge variant="secondary" className="bg-amber-50 text-amber-700 border border-amber-200 text-[11px]">
-                              <Clock className="h-3 w-3 mr-1" />
-                              Pending
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px]">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Completed
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          {match.status === "PENDING" && canManage && tournamentStatus === "ONGOING" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-xs h-8 hover:bg-gray-900 hover:text-white transition-colors"
-                              onClick={() => {
-                                setSelectedMatch(match);
-                                setResultDialogOpen(true);
-                              }}
-                            >
-                              Submit Result
-                            </Button>
-                          )}
-                          {match.status === "FINISHED" && isOrganizer && (() => {
-                            const updatedAt = new Date(match.createdAt);
-                            const hoursSince = (Date.now() - updatedAt.getTime()) / (1000 * 60 * 60);
-                            return hoursSince <= 24;
-                          })() && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-xs h-8 text-amber-600 border-amber-200 hover:bg-amber-50"
-                              disabled={resetting === match.id}
-                              onClick={() => handleResetMatch(match.id)}
-                            >
-                              {resetting === match.id ? "Resetting..." : "Reset"}
-                            </Button>
-                          )}
-                          {match.status === "PENDING" && tournamentStatus === "ONGOING" && filter === "my" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-xs h-8 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                              disabled={invitingMatch === match.id}
-                              onClick={() => handleInviteToPlay(match)}
-                            >
-                              {invitingMatch === match.id ? "Sending..." : "Invite to Play"}
-                            </Button>
-                          )}
-                        </div>
+              {/* KotC Status Banner */}
+              {isKotc && tournamentData?.metadata && tournamentStatus === "ONGOING" && (
+                <Card className="border-amber-200 bg-amber-50/50 mb-4">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-amber-900">Court Status</p>
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          Streak: {(tournamentData.metadata as any).streak || 0} consecutive wins
+                        </p>
                       </div>
+                      <div className="text-right">
+                        <p className="text-xs text-amber-700">
+                          Matches: {(tournamentData.metadata as any).matchesPlayed || 0} / {tournamentData.totalMatches || "?"}
+                        </p>
+                        <p className="text-xs text-amber-600 mt-0.5">
+                          Bench: {((tournamentData.metadata as any).bench || []).length} waiting
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-                      {/* Players / Teams */}
-                      {isDoublesMatch ? (
-                        <div className="flex items-stretch gap-2 sm:gap-3">
-                          {/* Team 1 */}
-                          <div className={`flex-1 rounded-lg p-3 border transition-colors ${
-                            result?.type === "win1"
-                              ? "bg-emerald-50 border-emerald-200"
-                              : "bg-gradient-to-br from-blue-50 to-indigo-50/50 border-blue-100"
-                          }`}>
-                            <p className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider mb-2">Team 1</p>
-                            <div className="space-y-1.5">
-                              <div className="flex items-center gap-2">
-                                <PlayerAvatar player={match.player1} />
-                                <span className="text-sm font-medium text-gray-900 truncate">{match.player1?.name || "TBD"}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <PlayerAvatar player={match.player2} />
-                                <span className="text-sm font-medium text-gray-900 truncate">{match.player2?.name || "TBD"}</span>
-                              </div>
-                            </div>
-                            {result?.type === "win1" && (
-                              <Badge className="mt-2 bg-emerald-600 text-white text-[10px]">
-                                <Trophy className="h-3 w-3 mr-1" />Won
-                              </Badge>
-                            )}
-                          </div>
+              {/* Round-based rendering */}
+              {isRoundBased ? (() => {
+                const roundGroups = new Map<number, Match[]>();
+                for (const m of filteredMatches) {
+                  const r = m.round || 1;
+                  if (!roundGroups.has(r)) roundGroups.set(r, []);
+                  roundGroups.get(r)!.push(m);
+                }
+                const sortedRounds = Array.from(roundGroups.entries()).sort((a, b) => isKotc ? b[0] - a[0] : a[0] - b[0]);
+                const totalRoundsLabel = matchmakingMethod === "SWISS" ? tournamentData?.totalRounds : matchmakingMethod === "ROTATING_PARTNER" ? tournamentData?.totalRounds : tournamentData?.totalMatches;
 
-                          {/* VS divider */}
-                          <div className="flex items-center">
-                            <div className="h-10 w-10 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center">
-                              <span className="text-xs font-black text-gray-400">VS</span>
-                            </div>
-                          </div>
-
-                          {/* Team 2 */}
-                          <div className={`flex-1 rounded-lg p-3 border transition-colors ${
-                            result?.type === "win2"
-                              ? "bg-emerald-50 border-emerald-200"
-                              : "bg-gradient-to-br from-purple-50 to-fuchsia-50/50 border-purple-100"
-                          }`}>
-                            <p className="text-[10px] font-semibold text-purple-500 uppercase tracking-wider mb-2">Team 2</p>
-                            <div className="space-y-1.5">
-                              <div className="flex items-center gap-2">
-                                <PlayerAvatar player={match.player3} />
-                                <span className="text-sm font-medium text-gray-900 truncate">{match.player3?.name || "TBD"}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <PlayerAvatar player={match.player4} />
-                                <span className="text-sm font-medium text-gray-900 truncate">{match.player4?.name || "TBD"}</span>
-                              </div>
-                            </div>
-                            {result?.type === "win2" && (
-                              <Badge className="mt-2 bg-emerald-600 text-white text-[10px]">
-                                <Trophy className="h-3 w-3 mr-1" />Won
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        /* Singles */
-                        <div className="flex items-center gap-2 sm:gap-3">
-                          <div className={`flex-1 rounded-lg p-3 sm:p-4 border text-center transition-colors ${
-                            result?.type === "win1"
-                              ? "bg-emerald-50 border-emerald-200"
-                              : "bg-gradient-to-br from-blue-50 to-indigo-50/50 border-blue-100"
-                          }`}>
-                            <div className="flex flex-col items-center gap-1.5">
-                              <PlayerAvatar player={match.player1} size="md" />
-                              <span className="text-sm font-semibold text-gray-900 truncate max-w-full">
-                                {match.player1?.name || "TBD"}
-                              </span>
-                              {result?.type === "win1" && (
-                                <Badge className="bg-emerald-600 text-white text-[10px]">
-                                  <Trophy className="h-3 w-3 mr-1" />Won
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center">
-                            <div className="h-10 w-10 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center">
-                              <span className="text-xs font-black text-gray-400">VS</span>
-                            </div>
-                          </div>
-
-                          <div className={`flex-1 rounded-lg p-3 sm:p-4 border text-center transition-colors ${
-                            result?.type === "win2"
-                              ? "bg-emerald-50 border-emerald-200"
-                              : "bg-gradient-to-br from-purple-50 to-fuchsia-50/50 border-purple-100"
-                          }`}>
-                            <div className="flex flex-col items-center gap-1.5">
-                              <PlayerAvatar player={match.player2} size="md" />
-                              <span className="text-sm font-semibold text-gray-900 truncate max-w-full">
-                                {match.player2?.name || "TBD"}
-                              </span>
-                              {result?.type === "win2" && (
-                                <Badge className="bg-emerald-600 text-white text-[10px]">
-                                  <Trophy className="h-3 w-3 mr-1" />Won
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                return sortedRounds.map(([roundNum, roundMatches]) => (
+                  <div key={roundNum} className="mb-6">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="h-7 px-3 rounded-full bg-gray-900 text-white text-xs font-semibold flex items-center">
+                        {isKotc ? `Match ${roundNum}` : `Round ${roundNum}`}
+                        {totalRoundsLabel && (
+                          <span className="text-gray-400 ml-1">/ {totalRoundsLabel}</span>
+                        )}
+                      </div>
+                      {roundMatches.every((m) => m.status === "FINISHED") && (
+                        <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 text-[10px]">Complete</Badge>
                       )}
-
-                      {/* Result banner */}
-                      {result && (
-                        <div className={`mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
-                          result.type === "draw"
-                            ? "bg-amber-50 text-amber-700 border border-amber-200"
-                            : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                        }`}>
-                          {result.type === "draw" ? (
-                            <Minus className="h-3.5 w-3.5" />
-                          ) : (
-                            <Trophy className="h-3.5 w-3.5" />
-                          )}
-                          {result.text}
-                        </div>
+                      {roundMatches.some((m) => m.status === "PENDING") && (
+                        <Badge variant="secondary" className="bg-amber-50 text-amber-700 text-[10px]">In Progress</Badge>
                       )}
                     </div>
+                    <div className="space-y-3">
+                      {roundMatches.map((match) => renderMatchCard(match))}
+                    </div>
                   </div>
-                );
-              })}
+                ));
+              })() : (
+                <div className="space-y-3">
+                  {filteredMatches.map((match) => renderMatchCard(match))}
+                </div>
+              )}
             </div>
           )}
         </>
@@ -967,7 +1059,8 @@ export default function MatchesPage() {
                 <Trophy className="h-4 w-4 text-purple-500 shrink-0" />
               </button>
 
-              {/* Option: Draw */}
+              {/* Option: Draw — not available for King of the Court */}
+              {!isKotc && (
               <button
                 disabled={submitting}
                 onClick={() => handleSubmitResult("draw")}
@@ -981,6 +1074,7 @@ export default function MatchesPage() {
                   <p className="text-xs text-gray-500">Match ended in a draw</p>
                 </div>
               </button>
+              )}
             </div>
           )}
 

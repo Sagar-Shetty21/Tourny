@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { name, type, matchmakingMethod, maxParticipants, joinExpiry } = body;
+    const { name, type, matchmakingMethod, maxParticipants, joinExpiry, totalRounds, totalMatches } = body;
 
     // Validate required fields
     if (!name || !type) {
@@ -36,6 +36,47 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validate matchmaking method
+    const validMethods = ["ROUND_ROBIN", "SWISS", "ROTATING_PARTNER", "KING_OF_THE_COURT"];
+    const method = matchmakingMethod || "ROUND_ROBIN";
+    if (!validMethods.includes(method)) {
+      return NextResponse.json(
+        { error: "Invalid matchmaking method" },
+        { status: 400 }
+      );
+    }
+
+    // Rotating Partner is doubles only
+    if (method === "ROTATING_PARTNER" && type !== "DOUBLES") {
+      return NextResponse.json(
+        { error: "Rotating Partner League is only available for Doubles" },
+        { status: 400 }
+      );
+    }
+
+    // Validate totalRounds for Swiss and Rotating Partner
+    if (method === "SWISS" && (!totalRounds || totalRounds < 2)) {
+      return NextResponse.json(
+        { error: "Swiss System requires at least 2 rounds" },
+        { status: 400 }
+      );
+    }
+
+    if (method === "ROTATING_PARTNER" && (!totalRounds || totalRounds < 3 || totalRounds > 12)) {
+      return NextResponse.json(
+        { error: "Rotating Partner League requires 3-12 rounds" },
+        { status: 400 }
+      );
+    }
+
+    // Validate totalMatches for King of the Court
+    if (method === "KING_OF_THE_COURT" && (!totalMatches || totalMatches < 3)) {
+      return NextResponse.json(
+        { error: "King of the Court requires at least 3 total matches" },
+        { status: 400 }
+      );
+    }
+
     // Generate invitation token
     const inviteToken = randomBytes(32).toString("hex");
     const expiresAt = joinExpiry ? new Date(joinExpiry) : null;
@@ -45,8 +86,10 @@ export async function POST(req: NextRequest) {
       data: {
         name,
         type,
-        matchmakingMethod: matchmakingMethod || "ROUND_ROBIN",
+        matchmakingMethod: method,
         maxParticipants: maxParticipants || null,
+        totalRounds: (method === "SWISS" || method === "ROTATING_PARTNER") ? totalRounds : null,
+        totalMatches: method === "KING_OF_THE_COURT" ? totalMatches : null,
         joinExpiry: expiresAt,
         createdBy: userId,
         owners: {

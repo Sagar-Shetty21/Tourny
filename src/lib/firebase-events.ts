@@ -10,7 +10,10 @@ export type SystemEventType =
   | "tournament_started"
   | "tournament_finished"
   | "match_invite"
-  | "match_reset";
+  | "match_reset"
+  | "round_completed"
+  | "kotc_match_created"
+  | "tournament_reset";
 
 export async function writeTournamentEvent(
   tournamentId: string,

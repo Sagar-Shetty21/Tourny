@@ -58,13 +58,13 @@ export default function DashboardPage() {
       <Card className="hover:shadow-md transition-all border border-gray-200 py-0">
         <CardContent className="flex items-center justify-between py-3 px-4">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 min-w-0">
               <h3 className="text-sm font-semibold text-gray-900 truncate">
                 {tournament.name}
               </h3>
-              {getStatusBadge(tournament.status)}
+              <span className="shrink-0">{getStatusBadge(tournament.status)}</span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
               <Users className="h-3 w-3" />
               <span>{tournament._count.participants} players</span>
               <span className="text-gray-300">|</span>

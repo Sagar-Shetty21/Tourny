@@ -1,18 +1,19 @@
 import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getUserRole, logActivity } from "@/lib/tournament-utils";
+import {
+  getUserRole,
+  logActivity,
+  getMinPlayers,
+  shuffle,
+  generateSwissRoundSingles,
+  generateSwissRoundDoubles,
+  generateRotatingPartnerSchedule,
+  generateKotcFirstMatch,
+  buildPastPairings,
+} from "@/lib/tournament-utils";
 import { writeTournamentEvent } from "@/lib/firebase-events";
 import { sendPushToUsers } from "@/lib/push-notifications";
-
-// Fisher-Yates shuffle
-function shuffle<T>(arr: T[]): T[] {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
 
 // Generate round-robin matches for singles
 function generateSinglesMatches(participantIds: string[]) {
@@ -23,6 +24,7 @@ function generateSinglesMatches(participantIds: string[]) {
       matches.push({
         player1Id: participantIds[i],
         player2Id: participantIds[j],
+        round: 1,
       });
     }
   }
@@ -53,28 +55,14 @@ function generateDoublesMatches(participantIds: string[]) {
   
   // For each set of 4 players, generate all 3 possible team pairings
   for (const [p1, p2, p3, p4] of playerCombinations) {
-    // Pairing 1: (p1, p2) vs (p3, p4)
     matches.push({
-      player1Id: p1,
-      player2Id: p2,
-      player3Id: p3,
-      player4Id: p4,
+      player1Id: p1, player2Id: p2, player3Id: p3, player4Id: p4, round: 1,
     });
-    
-    // Pairing 2: (p1, p3) vs (p2, p4)
     matches.push({
-      player1Id: p1,
-      player2Id: p3,
-      player3Id: p2,
-      player4Id: p4,
+      player1Id: p1, player2Id: p3, player3Id: p2, player4Id: p4, round: 1,
     });
-    
-    // Pairing 3: (p1, p4) vs (p2, p3)
     matches.push({
-      player1Id: p1,
-      player2Id: p4,
-      player3Id: p2,
-      player4Id: p3,
+      player1Id: p1, player2Id: p4, player3Id: p2, player4Id: p3, round: 1,
     });
   }
   
@@ -133,41 +121,111 @@ export async function POST(
     }
 
     // Check minimum participants
-    const minParticipants = tournament.type === "SINGLES" ? 2 : 4;
+    const minParticipants = getMinPlayers(tournament.matchmakingMethod, tournament.type);
     if (tournament.participants.length < minParticipants) {
       return NextResponse.json(
         { 
-          error: `Not enough participants. Minimum ${minParticipants} required.`,
+          error: `Not enough participants. Minimum ${minParticipants} required for ${tournament.matchmakingMethod.replace(/_/g, ' ')}.`,
           currentCount: tournament.participants.length 
         },
         { status: 400 }
       );
     }
 
-    // Generate matches based on tournament type
+    // Generate matches based on matchmaking method
     const participantIds = tournament.participants.map((p) => p.userId);
-    const matchData = shuffle(
-      tournament.type === "SINGLES"
-        ? generateSinglesMatches(participantIds)
-        : generateDoublesMatches(participantIds)
-    );
+    let matchData: Array<{
+      player1Id: string;
+      player2Id: string;
+      player3Id?: string | null;
+      player4Id?: string | null;
+      round: number;
+    }>;
+    let tournamentUpdateData: Record<string, any> = { status: "ONGOING" };
+
+    switch (tournament.matchmakingMethod) {
+      case "SWISS": {
+        // Generate only round 1
+        if (tournament.type === "SINGLES") {
+          matchData = generateSwissRoundSingles(
+            participantIds, [], 1, new Set()
+          );
+        } else {
+          matchData = generateSwissRoundDoubles(
+            participantIds, [], 1, new Set(), new Set()
+          );
+        }
+        tournamentUpdateData.currentRound = 1;
+        break;
+      }
+
+      case "ROTATING_PARTNER": {
+        matchData = generateRotatingPartnerSchedule(
+          participantIds,
+          tournament.totalRounds || 6
+        );
+        break;
+      }
+
+      case "KING_OF_THE_COURT": {
+        const { match, metadata } = generateKotcFirstMatch(
+          participantIds,
+          tournament.type as "SINGLES" | "DOUBLES"
+        );
+        matchData = [match];
+        tournamentUpdateData.metadata = metadata;
+        tournamentUpdateData.currentRound = 1;
+        break;
+      }
+
+      case "ROUND_ROBIN":
+      default: {
+        matchData = shuffle(
+          tournament.type === "SINGLES"
+            ? generateSinglesMatches(participantIds)
+            : generateDoublesMatches(participantIds)
+        );
+        break;
+      }
+    }
+
+    // Filter out BYE matches (for Swiss with odd players) — create them as special records
+    const realMatches = matchData.filter((m) => m.player2Id !== "BYE" && m.player1Id !== "BYE");
+    const byeMatches = matchData.filter((m) => m.player2Id === "BYE" || m.player1Id === "BYE");
 
     // Create matches and update tournament status in a transaction
     const [updatedTournament, createdMatches] = await prisma.$transaction([
       prisma.tournament.update({
         where: { id: tournamentId },
-        data: { status: "ONGOING" },
+        data: tournamentUpdateData,
         include: {
           owners: true,
           participants: true,
         },
       }),
       prisma.match.createMany({
-        data: matchData.map((match) => ({
-          tournamentId,
-          status: "PENDING",
-          ...match,
-        })),
+        data: [
+          ...realMatches.map((match) => ({
+            tournamentId,
+            status: "PENDING" as const,
+            player1Id: match.player1Id,
+            player2Id: match.player2Id,
+            player3Id: match.player3Id || null,
+            player4Id: match.player4Id || null,
+            round: match.round,
+          })),
+          // Bye matches are auto-finished
+          ...byeMatches.map((match) => ({
+            tournamentId,
+            status: "FINISHED" as const,
+            player1Id: match.player1Id === "BYE" ? null : match.player1Id,
+            player2Id: match.player2Id === "BYE" ? null : match.player2Id,
+            player3Id: null,
+            player4Id: null,
+            round: match.round,
+            result: { winner: match.player1Id === "BYE" ? "team2" : "team1", bye: true } as any,
+          })),
+        ],
       }),
     ]);
 

@@ -14,6 +14,9 @@ enum TournamentType {
 
 enum MatchmakingMethod {
   ROUND_ROBIN
+  SWISS
+  ROTATING_PARTNER
+  KING_OF_THE_COURT
 }
 
 enum TournamentStatus {
@@ -104,6 +107,10 @@ model Tournament {
   status             TournamentStatus   @default(OPEN)
   joinExpiry         DateTime?
   maxParticipants    Int?
+  totalRounds        Int?
+  currentRound       Int                @default(1)
+  totalMatches       Int?
+  metadata           Json?
   createdBy          String
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
@@ -155,6 +162,7 @@ model Match {
   player2Id    String?
   player3Id    String?
   player4Id    String?
+  round        Int         @default(1)
   status       MatchStatus @default(PENDING)
   result       Json?
   scheduledAt  DateTime?

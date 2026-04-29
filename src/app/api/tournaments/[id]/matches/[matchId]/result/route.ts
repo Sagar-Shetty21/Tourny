@@ -1,7 +1,16 @@
 import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getUserRole, logActivity } from "@/lib/tournament-utils";
+import {
+  getUserRole,
+  logActivity,
+  generateSwissRoundSingles,
+  generateSwissRoundDoubles,
+  generateKotcNextMatch,
+  buildPastPairings,
+  computeStandingsFromMatches,
+  KotcState,
+} from "@/lib/tournament-utils";
 import { writeTournamentEvent } from "@/lib/firebase-events";
 import { sendPushToUsers } from "@/lib/push-notifications";
 
@@ -79,18 +88,52 @@ export async function POST(
       );
     }
 
+    // King of the Court: draws are not allowed
+    if (
+      match.tournament.matchmakingMethod === "KING_OF_THE_COURT" &&
+      result.winner === "draw"
+    ) {
+      return NextResponse.json(
+        { error: "Draws are not allowed in King of the Court" },
+        { status: 400 }
+      );
+    }
+
+    // For KotC: add defender bonus to result before saving
+    let finalResult = result;
+    if (match.tournament.matchmakingMethod === "KING_OF_THE_COURT") {
+      const metadata = match.tournament.metadata as KotcState | null;
+      if (metadata && metadata.streak > 0) {
+        // Check if winning team are the current defenders
+        const defendersSet = new Set(metadata.defenders || []);
+        let winnersAreDefenders = false;
+        if (match.tournament.type === "SINGLES") {
+          const winnerId = result.winner === "team1" ? match.player1Id : match.player2Id;
+          winnersAreDefenders = winnerId ? defendersSet.has(winnerId) : false;
+        } else {
+          const winnerIds = result.winner === "team1"
+            ? [match.player1Id, match.player2Id]
+            : [match.player3Id, match.player4Id];
+          winnersAreDefenders = winnerIds.every((id) => id && defendersSet.has(id));
+        }
+        if (winnersAreDefenders) {
+          finalResult = { ...result, defenderBonus: metadata.streak };
+        }
+      }
+    }
+
     // Update match with result
     const updatedMatch = await prisma.match.update({
       where: { id: matchId },
       data: {
-        result,
+        result: finalResult,
         status: "FINISHED",
       },
     });
 
     await logActivity(tournamentId, userId, "MATCH_RESULT_SUBMITTED", {
       matchId,
-      result,
+      result: finalResult,
     });
 
     // Get match details for the event
@@ -133,6 +176,174 @@ export async function POST(
       `/tournaments/${tournamentId}/matches`
     ).catch(() => {});
 
+    // ─── Dynamic match generation for Swiss and KotC ───
+
+    let newRoundGenerated = false;
+    let allRoundsComplete = false;
+    let nextMatchCreated = false;
+    let kotcStatus: { streak?: number; benchStatus?: string[] } | null = null;
+
+    if (match.tournament.matchmakingMethod === "SWISS") {
+      // Check if all matches in current round are finished
+      const currentRound = match.tournament.currentRound || 1;
+      const pendingInRound = await prisma.match.count({
+        where: {
+          tournamentId,
+          round: currentRound,
+          status: "PENDING",
+        },
+      });
+
+      if (pendingInRound === 0) {
+        const totalRounds = match.tournament.totalRounds || 1;
+
+        if (currentRound < totalRounds) {
+          // Generate next round
+          const nextRound = currentRound + 1;
+          const allFinishedMatches = await prisma.match.findMany({
+            where: { tournamentId, status: "FINISHED" },
+          });
+
+          const activeParticipants = await prisma.participant.findMany({
+            where: { tournamentId, removedAt: null },
+          });
+          const participantIds = activeParticipants.map((p) => p.userId);
+
+          const standings = computeStandingsFromMatches(
+            allFinishedMatches as any,
+            match.tournament.type as "SINGLES" | "DOUBLES"
+          );
+
+          const { pastPairings, pastTeamPairings, pastMatchPairings } =
+            buildPastPairings(allFinishedMatches as any, match.tournament.type as "SINGLES" | "DOUBLES");
+
+          let newMatches;
+          if (match.tournament.type === "SINGLES") {
+            newMatches = generateSwissRoundSingles(
+              participantIds, standings, nextRound, pastPairings
+            );
+          } else {
+            newMatches = generateSwissRoundDoubles(
+              participantIds, standings, nextRound, pastTeamPairings, pastMatchPairings, pastPairings
+            );
+          }
+
+          // Create new round matches
+          const realMatches = newMatches.filter((m) => m.player2Id !== "BYE" && m.player1Id !== "BYE");
+          const byeMatches = newMatches.filter((m) => m.player2Id === "BYE" || m.player1Id === "BYE");
+
+          await prisma.$transaction([
+            prisma.tournament.update({
+              where: { id: tournamentId },
+              data: { currentRound: nextRound },
+            }),
+            prisma.match.createMany({
+              data: [
+                ...realMatches.map((m) => ({
+                  tournamentId,
+                  status: "PENDING" as const,
+                  player1Id: m.player1Id,
+                  player2Id: m.player2Id,
+                  player3Id: m.player3Id || null,
+                  player4Id: m.player4Id || null,
+                  round: m.round,
+                })),
+                ...byeMatches.map((m) => ({
+                  tournamentId,
+                  status: "FINISHED" as const,
+                  player1Id: m.player1Id === "BYE" ? null : m.player1Id,
+                  player2Id: m.player2Id === "BYE" ? null : m.player2Id,
+                  player3Id: null,
+                  player4Id: null,
+                  round: m.round,
+                  result: { winner: m.player1Id === "BYE" ? "team2" : "team1", bye: true } as any,
+                })),
+              ],
+            }),
+          ]);
+
+          newRoundGenerated = true;
+
+          await writeTournamentEvent(tournamentId, "round_completed", {
+            completedRound: currentRound,
+            newRound: nextRound,
+            totalRounds,
+          });
+        } else {
+          allRoundsComplete = true;
+        }
+      }
+    }
+
+    if (match.tournament.matchmakingMethod === "KING_OF_THE_COURT") {
+      const metadata = match.tournament.metadata as unknown as KotcState;
+      const totalMatchesLimit = match.tournament.totalMatches || 10;
+
+      const { match: nextMatch, metadata: updatedMetadata, tournamentComplete } =
+        generateKotcNextMatch(
+          metadata,
+          result.winner as "team1" | "team2",
+          match.tournament.type as "SINGLES" | "DOUBLES",
+          totalMatchesLimit
+        );
+
+      if (tournamentComplete) {
+        allRoundsComplete = true;
+        await prisma.tournament.update({
+          where: { id: tournamentId },
+          data: { metadata: updatedMetadata as any },
+        });
+      } else if (nextMatch) {
+        await prisma.$transaction([
+          prisma.tournament.update({
+            where: { id: tournamentId },
+            data: {
+              metadata: updatedMetadata as any,
+              currentRound: updatedMetadata.matchesPlayed + 1,
+            },
+          }),
+          prisma.match.create({
+            data: {
+              tournamentId,
+              status: "PENDING",
+              player1Id: nextMatch.player1Id,
+              player2Id: nextMatch.player2Id,
+              player3Id: nextMatch.player3Id || null,
+              player4Id: nextMatch.player4Id || null,
+              round: nextMatch.round,
+            },
+          }),
+        ]);
+        nextMatchCreated = true;
+        kotcStatus = {
+          streak: updatedMetadata.streak,
+          benchStatus: updatedMetadata.bench,
+        };
+
+        // Fire chat event for KotC next match
+        const kotcPlayerIds = [nextMatch.player1Id, nextMatch.player2Id, nextMatch.player3Id, nextMatch.player4Id].filter(Boolean) as string[];
+        const kotcPlayers = await prisma.user.findMany({
+          where: { id: { in: kotcPlayerIds } },
+          select: { id: true, name: true, username: true },
+        });
+        const kotcNameMap = new Map(kotcPlayers.map((p) => [p.id, p.name || p.username || "?"]));
+        const kotcIsDoubles = !!(nextMatch.player3Id && nextMatch.player4Id);
+        const challengerName = kotcIsDoubles
+          ? `${kotcNameMap.get(nextMatch.player1Id) || "?"} & ${kotcNameMap.get(nextMatch.player2Id!) || "?"}`
+          : kotcNameMap.get(nextMatch.player1Id) || "?";
+        const defenderName = kotcIsDoubles
+          ? `${kotcNameMap.get(nextMatch.player3Id!) || "?"} & ${kotcNameMap.get(nextMatch.player4Id!) || "?"}`
+          : kotcNameMap.get(nextMatch.player2Id!) || "?";
+
+        await writeTournamentEvent(tournamentId, "kotc_match_created", {
+          matchNumber: updatedMetadata.matchesPlayed + 1,
+          challengerName,
+          defenderName,
+          streak: updatedMetadata.streak,
+        });
+      }
+    }
+
     // Check if all matches are finished (inform frontend, but don't auto-finish)
     const pendingMatches = await prisma.match.count({
       where: {
@@ -141,12 +352,16 @@ export async function POST(
       },
     });
 
-    const allMatchesComplete = pendingMatches === 0;
+    const allMatchesComplete = pendingMatches === 0 || allRoundsComplete;
 
     return NextResponse.json({
       success: true,
       match: updatedMatch,
       allMatchesComplete,
+      newRoundGenerated,
+      allRoundsComplete,
+      nextMatchCreated,
+      kotcStatus,
       message: "Match result submitted successfully",
     });
   } catch (error) {

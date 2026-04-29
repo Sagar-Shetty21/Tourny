@@ -83,7 +83,7 @@ interface MatchInviteDoc {
 interface Match {
   id: string;
   status: string;
-  result: { winner?: string } | null;
+  result: { winner?: string; bye?: boolean; defenderBonus?: number } | null;
   player1?: { id: string; name: string } | null;
   player2?: { id: string; name: string } | null;
   player3?: { id: string; name: string } | null;
@@ -114,6 +114,7 @@ interface PlayerStanding {
   drawn: number;
   lost: number;
   points: number;
+  bonus: number;
 }
 
 function computeStandings(matches: Match[]): PlayerStanding[] {
@@ -121,15 +122,18 @@ function computeStandings(matches: Match[]): PlayerStanding[] {
   const ensure = (p: { id: string; name: string } | null | undefined) => {
     if (!p) return;
     if (!map.has(p.id))
-      map.set(p.id, { id: p.id, name: p.name, played: 0, won: 0, drawn: 0, lost: 0, points: 0 });
+      map.set(p.id, { id: p.id, name: p.name, played: 0, won: 0, drawn: 0, lost: 0, points: 0, bonus: 0 });
   };
 
   for (const m of matches) {
     if (m.status !== "FINISHED" || !m.result?.winner) continue;
+    if (m.result.bye) continue; // Skip bye matches
     const isDoubles = !!(m.player3 && m.player4);
     const t1 = isDoubles ? [m.player1, m.player2].filter(Boolean) : [m.player1].filter(Boolean);
     const t2 = isDoubles ? [m.player3, m.player4].filter(Boolean) : [m.player2].filter(Boolean);
     for (const p of [...t1, ...t2]) ensure(p as { id: string; name: string });
+
+    const defenderBonus = m.result.defenderBonus || 0;
 
     if (m.result.winner === "draw") {
       for (const p of [...t1, ...t2]) {
@@ -137,10 +141,10 @@ function computeStandings(matches: Match[]): PlayerStanding[] {
         s.played++; s.drawn++; s.points += 1;
       }
     } else if (m.result.winner === "team1") {
-      for (const p of t1) { const s = map.get(p!.id)!; s.played++; s.won++; s.points += 3; }
+      for (const p of t1) { const s = map.get(p!.id)!; s.played++; s.won++; s.points += 3 + defenderBonus; s.bonus += defenderBonus; }
       for (const p of t2) { const s = map.get(p!.id)!; s.played++; s.lost++; }
     } else {
-      for (const p of t2) { const s = map.get(p!.id)!; s.played++; s.won++; s.points += 3; }
+      for (const p of t2) { const s = map.get(p!.id)!; s.played++; s.won++; s.points += 3 + defenderBonus; s.bonus += defenderBonus; }
       for (const p of t1) { const s = map.get(p!.id)!; s.played++; s.lost++; }
     }
   }
@@ -390,15 +394,23 @@ export default function TournamentPage() {
   if (!tournament) return null;
 
   const activeMatches = tournament.matches.filter((m: Match) => m.status !== "STALE");
-  const pendingMatches = activeMatches.filter((m: Match) => m.status === "PENDING").length;
-  const finishedMatches = activeMatches.filter((m: Match) => m.status === "FINISHED").length;
-  const totalMatches = activeMatches.length;
+  const pendingMatchCount = activeMatches.filter((m: Match) => m.status === "PENDING").length;
+  const finishedMatchCount = activeMatches.filter((m: Match) => m.status === "FINISHED").length;
+  const totalMatchCount = activeMatches.length;
   const staleMatches = tournament.matches.filter((m: Match) => m.status === "STALE").length;
-  const progress = totalMatches > 0 ? Math.round((finishedMatches / totalMatches) * 100) : 0;
+  const progress = totalMatchCount > 0 ? Math.round((finishedMatchCount / totalMatchCount) * 100) : 0;
   const isOrganizer = role === "organizer";
   const isManager = role === "manager";
   const canManage = isOrganizer || isManager;
-  const allMatchesDone = totalMatches > 0 && pendingMatches === 0;
+  const allMatchesDone = totalMatchCount > 0 && pendingMatchCount === 0;
+  const matchmakingMethod = tournament.matchmakingMethod || "ROUND_ROBIN";
+  const supportsResync = matchmakingMethod === "ROUND_ROBIN" || matchmakingMethod === "ROTATING_PARTNER";
+  const formatLabel: Record<string, string> = {
+    ROUND_ROBIN: "Round Robin",
+    SWISS: "Swiss System",
+    ROTATING_PARTNER: "Rotating Partner",
+    KING_OF_THE_COURT: "King of the Court",
+  };
   const recentMatches = [...tournament.matches]
     .filter((m) => m.status === "FINISHED")
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -499,7 +511,7 @@ export default function TournamentPage() {
             <h1 className="text-3xl font-bold text-gray-900">{tournament.name}</h1>
             <p className="text-gray-600 mt-1 flex items-center gap-2">
               <Target className="h-4 w-4" />
-              {tournament.type} • Round Robin
+              {tournament.type} • {formatLabel[matchmakingMethod] || matchmakingMethod}
               {role && (
                 <Badge variant="outline" className="ml-2 text-xs capitalize">{role}</Badge>
               )}
@@ -510,7 +522,12 @@ export default function TournamentPage() {
               <Share2 className="h-4 w-4 mr-2" />
               Share
             </Button>
-            {isOrganizer && tournament.status === "OPEN" && tournament.participants.length >= 2 && (
+            {isOrganizer && tournament.status === "OPEN" && tournament.participants.length >= (
+              matchmakingMethod === "SWISS" ? (tournament.type === "SINGLES" ? 4 : 8) :
+              matchmakingMethod === "ROTATING_PARTNER" ? 8 :
+              matchmakingMethod === "KING_OF_THE_COURT" ? (tournament.type === "SINGLES" ? 4 : 6) :
+              tournament.type === "SINGLES" ? 2 : 4
+            ) && (
               <Button onClick={handleStartTournament} disabled={starting}>
                 {starting ? "Starting..." : <><Play className="h-4 w-4 mr-2" />Start Tournament</>}
               </Button>
@@ -521,7 +538,7 @@ export default function TournamentPage() {
                 Finish Tournament
               </Button>
             )}
-            {isOrganizer && tournament.status === "ONGOING" && (
+            {isOrganizer && tournament.status === "ONGOING" && supportsResync && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="outline" size="sm" disabled={resyncing}>
@@ -563,12 +580,22 @@ export default function TournamentPage() {
       </div>
 
       {/* Start Tournament Alert */}
-      {isOrganizer && tournament.status === "OPEN" && tournament.participants.length < 2 && (
+      {isOrganizer && tournament.status === "OPEN" && tournament.participants.length < (
+        matchmakingMethod === "SWISS" ? (tournament.type === "SINGLES" ? 4 : 8) :
+        matchmakingMethod === "ROTATING_PARTNER" ? 8 :
+        matchmakingMethod === "KING_OF_THE_COURT" ? (tournament.type === "SINGLES" ? 4 : 6) :
+        tournament.type === "SINGLES" ? 2 : 4
+      ) && (
         <Alert className="mb-6">
           <Info className="h-4 w-4" />
           <AlertTitle>Not enough participants</AlertTitle>
           <AlertDescription>
-            You need at least {tournament.type === "SINGLES" ? "2" : "4"} participants to start the tournament.
+            You need at least {
+              matchmakingMethod === "SWISS" ? (tournament.type === "SINGLES" ? "4" : "8") :
+              matchmakingMethod === "ROTATING_PARTNER" ? "8" :
+              matchmakingMethod === "KING_OF_THE_COURT" ? (tournament.type === "SINGLES" ? "4" : "6") :
+              tournament.type === "SINGLES" ? "2" : "4"
+            } participants to start this {formatLabel[matchmakingMethod] || "tournament"}.
           </AlertDescription>
         </Alert>
       )}
@@ -632,9 +659,9 @@ export default function TournamentPage() {
         <Card>
           <CardContent className="pt-5 pb-4 px-4">
             <Gamepad2 className="h-5 w-5 text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold text-green-600">{totalMatches}</p>
+            <p className="text-2xl font-bold text-green-600">{totalMatchCount}</p>
             <p className="text-xs text-gray-500">
-              {finishedMatches} done • {pendingMatches} left
+              {finishedMatchCount} done • {pendingMatchCount} left
             </p>
           </CardContent>
         </Card>
@@ -657,6 +684,47 @@ export default function TournamentPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Format-specific info */}
+      {matchmakingMethod !== "ROUND_ROBIN" && tournament.status !== "OPEN" && (
+        <Card className="mb-6 border-indigo-100 bg-indigo-50/30">
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs font-semibold">
+                  {formatLabel[matchmakingMethod]}
+                </Badge>
+                {(matchmakingMethod === "SWISS" || matchmakingMethod === "ROTATING_PARTNER") && (
+                  <span className="text-sm text-gray-700">
+                    Round <span className="font-bold">{tournament.currentRound || 1}</span>
+                    {tournament.totalRounds && (
+                      <span className="text-gray-400"> / {tournament.totalRounds}</span>
+                    )}
+                  </span>
+                )}
+                {matchmakingMethod === "KING_OF_THE_COURT" && (
+                  <span className="text-sm text-gray-700">
+                    Match <span className="font-bold">{(tournament.metadata as any)?.matchesPlayed || 0}</span>
+                    {tournament.totalMatches && (
+                      <span className="text-gray-400"> / {tournament.totalMatches}</span>
+                    )}
+                  </span>
+                )}
+              </div>
+              {matchmakingMethod === "KING_OF_THE_COURT" && tournament.metadata && (
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-amber-700 font-medium">
+                    Streak: {(tournament.metadata as any).streak || 0}
+                  </span>
+                  <span className="text-gray-500">
+                    Bench: {((tournament.metadata as any).bench || []).length}
+                  </span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Description */}
       {tournament.description && (
@@ -689,13 +757,21 @@ export default function TournamentPage() {
               <div className="space-y-2">
                 {standings.slice(0, 5).map((s, i) => (
                   <div key={s.id} className={`flex items-center justify-between p-2 rounded-lg text-sm ${i === 0 ? "bg-amber-50" : ""}`}>
-                    <div className="flex items-center gap-2">
-                      <span className={`inline-flex items-center justify-center h-6 w-6 rounded-full text-xs font-bold ${
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`inline-flex items-center justify-center h-6 w-6 rounded-full text-xs font-bold shrink-0 ${
                         i === 0 ? "bg-amber-200 text-amber-800" : i === 1 ? "bg-gray-200 text-gray-700" : i === 2 ? "bg-orange-100 text-orange-700" : "text-gray-500"
                       }`}>{i + 1}</span>
                       <span className="font-medium text-gray-900 truncate">{s.name}</span>
                     </div>
-                    <span className="font-bold text-gray-900">{s.points} pts</span>
+                    <span
+                      className="font-bold text-gray-900 cursor-default shrink-0 ml-2"
+                      title={s.bonus > 0 ? `${s.won * 3} (wins) + ${s.drawn} (draws) + ${s.bonus} (streak bonus) = ${s.points}` : undefined}
+                    >
+                      {s.points} pts
+                      {s.bonus > 0 && (
+                        <span className="ml-1 text-[10px] text-orange-500 font-normal">+{s.bonus}</span>
+                      )}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -820,11 +896,11 @@ export default function TournamentPage() {
                     : null;
                   return (
                     <div key={p.odcId} className="flex items-center justify-between p-2 rounded-lg bg-emerald-50 text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="h-2 w-2 rounded-full bg-emerald-500" />
-                        <span className="font-medium text-gray-900">{p.userName}</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                        <span className="font-medium text-gray-900 truncate">{p.userName}</span>
                       </div>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500 shrink-0 ml-2">
                         {remaining !== null ? `${remaining}m left` : "∞"}
                       </span>
                     </div>
@@ -849,15 +925,15 @@ export default function TournamentPage() {
             <div className="space-y-2">
               {readyMatches.map((inv) => (
                 <div key={inv.id} className="flex items-center justify-between p-3 rounded-lg bg-indigo-50 border border-indigo-200">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-gray-900">
                       Match #{inv.matchNumber}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-gray-500 truncate">
                       {Object.values(inv.playerNames || {}).join(", ")}
                     </p>
                   </div>
-                  <Badge className="bg-emerald-600 text-white text-[10px]">All accepted</Badge>
+                  <Badge className="bg-emerald-600 text-white text-[10px] shrink-0 ml-2">All accepted</Badge>
                 </div>
               ))}
             </div>
