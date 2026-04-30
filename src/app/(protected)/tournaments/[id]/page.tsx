@@ -403,7 +403,7 @@ export default function TournamentPage() {
   const isManager = role === "manager";
   const canManage = isOrganizer || isManager;
   const allMatchesDone = totalMatchCount > 0 && pendingMatchCount === 0;
-  const activePlayers = tournament.participants.filter((p) => !p.removedAt);
+  const activePlayers = tournament.participants.filter((p: { removedAt?: string | null }) => !p.removedAt);
   const matchmakingMethod = tournament.matchmakingMethod || "ROUND_ROBIN";
   const supportsResync = matchmakingMethod === "ROUND_ROBIN" || matchmakingMethod === "ROTATING_PARTNER";
   const formatLabel: Record<string, string> = {
