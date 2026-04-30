@@ -5,7 +5,6 @@ export const authConfig = {
   session: { strategy: "jwt" },
   pages: {
     signIn: "/sign-in",
-    newUser: "/dashboard",
   },
   providers: [
     Credentials({

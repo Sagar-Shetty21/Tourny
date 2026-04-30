@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, UserPlus, Info, Users, Calendar, Crown, Trophy, Gamepad2, UserMinus, MessageCircle, BarChart3 } from "lucide-react";
+import { ArrowLeft, UserPlus, Info, Users, Calendar, Crown, Trophy, Gamepad2, UserMinus, MessageCircle, BarChart3, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useTournament, invalidateTournament } from "@/lib/swr";
@@ -53,6 +53,7 @@ export default function PlayersPage() {
   const currentUserId = session?.user?.id;
   const { tournament: rawTournament, isLoading: loading, mutate } = useTournament(id);
   const [removing, setRemoving] = useState<string | null>(null);
+  const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 
   const tournament: Tournament | null = rawTournament ? {
     ...rawTournament,
@@ -219,55 +220,64 @@ export default function PlayersPage() {
                   return (
                     <div
                       key={participant.id}
-                      className="p-4 border rounded-lg hover:shadow-md transition-shadow"
+                      className="border rounded-lg overflow-hidden hover:shadow-md transition-shadow"
                     >
-                      <div className="flex items-center justify-between">
+                      <button
+                        type="button"
+                        className="flex items-center gap-3 w-full p-4 text-left"
+                        onClick={() => canRemove ? setExpandedPlayer(expandedPlayer === participant.id ? null : participant.id) : undefined}
+                      >
+                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-semibold text-gray-700 shrink-0">
+                          {participant.user?.name
+                            ? participant.user.name.charAt(0).toUpperCase()
+                            : participant.user?.email?.charAt(0).toUpperCase() || "?"}
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-2">
-                            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-semibold text-gray-700 shrink-0">
-                              {participant.user?.name
-                                ? participant.user.name.charAt(0).toUpperCase()
-                                : participant.user?.email?.charAt(0).toUpperCase() || "?"}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h3 className="font-semibold text-gray-900 truncate">
-                                  {participant.user?.name || participant.user?.email || "Unknown User"}
-                                </h3>
-                                {tournament.owners.some(
-                                  (owner) => owner.userId === participant.userId && owner.role === "ORGANIZER"
-                                ) && (
-                                  <Badge variant="secondary" className="bg-yellow-100 text-yellow-700 shrink-0">
-                                    <Crown className="h-3 w-3 mr-1" />
-                                    Organizer
-                                  </Badge>
-                                )}
-                                {tournament.owners.some(
-                                  (owner) => owner.userId === participant.userId && owner.role === "MANAGER"
-                                ) && (
-                                  <Badge variant="secondary" className="bg-blue-100 text-blue-700 shrink-0">
-                                    Manager
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
-                                <Calendar className="h-3 w-3" />
-                                Joined {format(new Date(participant.joinedAt), "MMM d, yyyy")}
-                              </div>
-                            </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-semibold text-gray-900 truncate">
+                              {participant.user?.name || participant.user?.email || "Unknown User"}
+                            </h3>
+                            {tournament.owners.some(
+                              (owner) => owner.userId === participant.userId && owner.role === "ORGANIZER"
+                            ) && (
+                              <Badge variant="secondary" className="bg-yellow-100 text-yellow-700 shrink-0">
+                                <Crown className="h-3 w-3 mr-1" />
+                                Organizer
+                              </Badge>
+                            )}
+                            {tournament.owners.some(
+                              (owner) => owner.userId === participant.userId && owner.role === "MANAGER"
+                            ) && (
+                              <Badge variant="secondary" className="bg-blue-100 text-blue-700 shrink-0">
+                                Manager
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
+                            <Calendar className="h-3 w-3" />
+                            Joined {format(new Date(participant.joinedAt), "MMM d, yyyy")}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-sm font-medium text-gray-500">#{index + 1}</span>
                           {canRemove && (
+                            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${expandedPlayer === participant.id ? "rotate-180" : ""}`} />
+                          )}
+                        </div>
+                      </button>
+                      {canRemove && expandedPlayer === participant.id && (
+                        <div className="px-4 pb-4 border-t bg-gray-50">
+                          <div className="pt-3">
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
                                   disabled={removing === participant.userId}
                                 >
-                                  <UserMinus className="h-4 w-4" />
+                                  <UserMinus className="h-4 w-4 mr-2" />
+                                  Remove Player
                                 </Button>
                               </AlertDialogTrigger>
                               <AlertDialogContent>
@@ -299,12 +309,9 @@ export default function PlayersPage() {
                                 </AlertDialogFooter>
                               </AlertDialogContent>
                             </AlertDialog>
-                          )}
-                          <div className="text-sm font-medium text-gray-500">
-                            #{index + 1}
                           </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })}

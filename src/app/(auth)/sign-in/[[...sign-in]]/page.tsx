@@ -1,8 +1,8 @@
 "use client";
 
 import { signIn, useSession } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,36 +18,15 @@ import {
 } from "@/components/ui/card";
 
 export default function SignInPage() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
+  const { status } = useSession();
   const searchParams = useSearchParams();
-  const [redirectUrl, setRedirectUrl] = useState<string>("/dashboard");
+  const redirectUrl = searchParams.get("redirect") || "/dashboard";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const redirect = searchParams.get("redirect");
-    if (redirect) {
-      setRedirectUrl(redirect);
-      sessionStorage.setItem("auth_redirect", redirect);
-    } else {
-      const storedRedirect = sessionStorage.getItem("auth_redirect");
-      if (storedRedirect) {
-        setRedirectUrl(storedRedirect);
-      }
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (status === "authenticated" && session) {
-      const destination = sessionStorage.getItem("auth_redirect") || "/dashboard";
-      sessionStorage.removeItem("auth_redirect");
-      router.push(destination);
-    }
-  }, [status, session, router]);
-
+  // Middleware handles redirect if already authenticated
   if (status === "authenticated") {
     return null;
   }
@@ -61,15 +40,16 @@ export default function SignInPage() {
       username,
       password,
       redirect: false,
+      callbackUrl: redirectUrl,
     });
 
     if (result?.error) {
       setError("Invalid username or password");
       setLoading(false);
     } else {
-      const destination = sessionStorage.getItem("auth_redirect") || "/dashboard";
-      sessionStorage.removeItem("auth_redirect");
-      router.push(destination);
+      // Navigate directly — no useEffect involved
+      console.log('[SIGNIN] handleSubmit navigating to: ' + redirectUrl);
+      window.location.href = redirectUrl;
     }
   };
 

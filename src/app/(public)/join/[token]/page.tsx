@@ -40,6 +40,7 @@ export default function JoinTournamentPage({ params }: JoinTournamentPageProps) 
 
   const handleJoin = async () => {
     if (!isSignedIn) {
+      console.log('[JOIN] Not signed in, redirecting to sign-in with redirect=/join/' + token);
       router.push(`/sign-in?redirect=/join/${token}`);
       return;
     }
