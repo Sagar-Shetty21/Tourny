@@ -18,6 +18,7 @@ export async function GET(
         status: true,
         createdAt: true,
         participants: {
+          where: { removedAt: null },
           select: {
             id: true,
             user: {
@@ -39,7 +40,10 @@ export async function GET(
           },
         },
         _count: {
-          select: { participants: true, matches: true },
+          select: {
+            participants: { where: { removedAt: null } },
+            matches: true,
+          },
         },
       },
     });

@@ -101,7 +101,7 @@ interface Tournament {
   joinExpiry?: string;
   createdAt: string;
   owners: Array<{ userId: string; role: string }>;
-  participants: Array<{ id: string; userId: string }>;
+  participants: Array<{ id: string; userId: string; removedAt?: string | null }>;
   matches: Match[];
   finishVotes?: Array<{ userId: string }>;
 }
@@ -403,6 +403,7 @@ export default function TournamentPage() {
   const isManager = role === "manager";
   const canManage = isOrganizer || isManager;
   const allMatchesDone = totalMatchCount > 0 && pendingMatchCount === 0;
+  const activePlayers = tournament.participants.filter((p) => !p.removedAt);
   const matchmakingMethod = tournament.matchmakingMethod || "ROUND_ROBIN";
   const supportsResync = matchmakingMethod === "ROUND_ROBIN" || matchmakingMethod === "ROTATING_PARTNER";
   const formatLabel: Record<string, string> = {
@@ -522,7 +523,7 @@ export default function TournamentPage() {
               <Share2 className="h-4 w-4 mr-2" />
               Share
             </Button>
-            {isOrganizer && tournament.status === "OPEN" && tournament.participants.length >= (
+            {isOrganizer && tournament.status === "OPEN" && activePlayers.length >= (
               matchmakingMethod === "SWISS" ? (tournament.type === "SINGLES" ? 4 : 8) :
               matchmakingMethod === "ROTATING_PARTNER" ? 8 :
               matchmakingMethod === "KING_OF_THE_COURT" ? (tournament.type === "SINGLES" ? 4 : 6) :
@@ -580,7 +581,7 @@ export default function TournamentPage() {
       </div>
 
       {/* Start Tournament Alert */}
-      {isOrganizer && tournament.status === "OPEN" && tournament.participants.length < (
+      {isOrganizer && tournament.status === "OPEN" && activePlayers.length < (
         matchmakingMethod === "SWISS" ? (tournament.type === "SINGLES" ? 4 : 8) :
         matchmakingMethod === "ROTATING_PARTNER" ? 8 :
         matchmakingMethod === "KING_OF_THE_COURT" ? (tournament.type === "SINGLES" ? 4 : 6) :
@@ -650,7 +651,7 @@ export default function TournamentPage() {
           <CardContent className="pt-5 pb-4 px-4">
             <Users className="h-5 w-5 text-muted-foreground mb-1" />
             <p className="text-2xl font-bold text-indigo-600">
-              {tournament.participants.length}
+              {activePlayers.length}
               {tournament.maxParticipants ? <span className="text-sm text-gray-400">/{tournament.maxParticipants}</span> : ""}
             </p>
             <p className="text-xs text-gray-500">Players</p>

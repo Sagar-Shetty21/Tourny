@@ -279,6 +279,20 @@ export async function POST(
       const metadata = match.tournament.metadata as unknown as KotcState;
       const totalMatchesLimit = match.tournament.totalMatches || 10;
 
+      // Purge removed players from KotC state so they don't participate
+      const activeKotcParticipants = await prisma.participant.findMany({
+        where: { tournamentId, removedAt: null },
+      });
+      const activeKotcIds = new Set(activeKotcParticipants.map((p) => p.userId));
+      metadata.bench = metadata.bench.filter((id) => activeKotcIds.has(id));
+      metadata.court = metadata.court.filter((id) => activeKotcIds.has(id));
+      // If court is short (a player was removed from court), pull from bench
+      const courtSize = match.tournament.type === "DOUBLES" ? 4 : 2;
+      while (metadata.court.length < courtSize && metadata.bench.length > 0) {
+        metadata.court.push(metadata.bench.shift()!);
+      }
+      metadata.defenders = metadata.defenders.filter((id) => activeKotcIds.has(id));
+
       const { match: nextMatch, metadata: updatedMetadata, tournamentComplete } =
         generateKotcNextMatch(
           metadata,

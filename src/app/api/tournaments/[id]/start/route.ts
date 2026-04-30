@@ -92,7 +92,9 @@ export async function POST(
       where: { id: tournamentId },
       include: {
         owners: true,
-        participants: true,
+        participants: {
+          where: { removedAt: null },
+        },
       },
     });
 
