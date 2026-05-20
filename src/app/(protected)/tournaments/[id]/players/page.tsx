@@ -53,6 +53,7 @@ export default function PlayersPage() {
   const currentUserId = session?.user?.id;
   const { tournament: rawTournament, isLoading: loading, mutate } = useTournament(id);
   const [removing, setRemoving] = useState<string | null>(null);
+  const [readding, setReadding] = useState<string | null>(null);
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 
   const tournament: Tournament | null = rawTournament ? {
@@ -91,6 +92,32 @@ export default function PlayersPage() {
       toast.error("Failed to remove player");
     } finally {
       setRemoving(null);
+    }
+  };
+
+  const handleReaddPlayer = async (targetUserId: string, playerName: string) => {
+    setReadding(targetUserId);
+    try {
+      const res = await fetch(`/api/tournaments/${id}/players/${targetUserId}`, {
+        method: "PATCH",
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        toast.success("Player re-added", {
+          description: `${playerName} has been re-added to the tournament`,
+        });
+        mutate();
+        invalidateTournament(id);
+      } else {
+        toast.error("Failed to re-add player", {
+          description: data.error,
+        });
+      }
+    } catch {
+      toast.error("Failed to re-add player");
+    } finally {
+      setReadding(null);
     }
   };
 
@@ -323,30 +350,78 @@ export default function PlayersPage() {
               <div className="mt-6 pt-6 border-t">
                 <h3 className="text-sm font-semibold text-gray-500 mb-3">Removed Players</h3>
                 <div className="space-y-2">
-                  {removedPlayers.map((participant: Participant) => (
-                    <div
-                      key={participant.id}
-                      className="p-3 border rounded-lg bg-gray-50 opacity-60"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center font-semibold text-gray-500 text-sm shrink-0">
-                            {participant.user?.name
-                              ? participant.user.name.charAt(0).toUpperCase()
-                              : participant.user?.email?.charAt(0).toUpperCase() || "?"}
+                  {removedPlayers.map((participant: Participant) => {
+                    const canReadd = isOrganizer && tournament.status !== "FINISHED";
+                    return (
+                      <div
+                        key={participant.id}
+                        className="p-3 border rounded-lg bg-gray-50 opacity-60"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center font-semibold text-gray-500 text-sm shrink-0">
+                              {participant.user?.name
+                                ? participant.user.name.charAt(0).toUpperCase()
+                                : participant.user?.email?.charAt(0).toUpperCase() || "?"}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-sm text-gray-600 truncate block">
+                                {participant.user?.name || participant.user?.email || "Unknown User"}
+                              </span>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <span className="text-sm text-gray-600 truncate block">
-                              {participant.user?.name || participant.user?.email || "Unknown User"}
-                            </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {canReadd && (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                                    disabled={readding === participant.userId}
+                                  >
+                                    <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                                    Re-add
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Re-add Player?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will re-add{" "}
+                                      <strong>
+                                        {participant.user?.name || participant.user?.email || "this player"}
+                                      </strong>{" "}
+                                      to the tournament.
+                                      {tournament.status === "ONGOING" &&
+                                        " You will need to resync matches to generate their new matchups."}
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() =>
+                                        handleReaddPlayer(
+                                          participant.userId,
+                                          participant.user?.name || participant.user?.email || "Player"
+                                        )
+                                      }
+                                      className="bg-green-600 hover:bg-green-700"
+                                    >
+                                      Re-add
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            )}
+                            <Badge variant="outline" className="text-red-500 border-red-200">
+                              Removed
+                            </Badge>
                           </div>
                         </div>
-                        <Badge variant="outline" className="text-red-500 border-red-200 shrink-0">
-                          Removed
-                        </Badge>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
